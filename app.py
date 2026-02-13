@@ -43,10 +43,8 @@ def set_ui_design(image_file):
         with open(image_file, "rb") as f:
             data = f.read()
         encoded_string = base64.b64encode(data).decode()
-
         st.markdown(f"""
             <style>
-
             /* Full Screen Background */
             .stApp {{
                 background-image: url("data:image/png;base64,{encoded_string}");
@@ -56,16 +54,16 @@ def set_ui_design(image_file):
             }}
 
             header {{background: rgba(0,0,0,0) !important;}}
-
-            /* Sidebar Glass Effect */
+            
             [data-testid="stSidebar"] {{
                 background-color: rgba(0, 0, 0, 0.3) !important;
                 backdrop-filter: blur(10px);
             }}
 
-            /* HEADER BOX */
+            /* EXACT HEADER STYLE FROM IMAGE */
             .styled-header {{
-                background-color: #262730;
+                background-color: #262730; /* Solid dark charcoal */
+                color: #ffffff !important;
                 padding: 40px 20px;
                 border-radius: 20px;
                 text-align: center;
@@ -74,12 +72,6 @@ def set_ui_design(image_file):
                 max-width: 700px;
             }}
 
-            .styled-header h1,
-            .styled-header p {{
-                color: #FFFFFF !important;
-            }}
-
-            /* Floating Footer */
             .corner-footer {{
                 position: fixed;
                 right: 20px;
@@ -101,56 +93,45 @@ def set_ui_design(image_file):
                 border-radius: 15px !important;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
             }}
-
-            /* Dark text ONLY inside white cards */
-            .st-emotion-cache-12w0qpk h2, 
-            .st-emotion-cache-12w0qpk h3, 
-            .st-emotion-cache-12w0qpk p {{
-                color: #1E1E1E !important;
-            }}
-
+            
+            h2, h3, p {{ color: #1E1E1E !important; }}
             </style>
-
             <div class="corner-footer">Created by: Sino Menghuy</div>
-
         """, unsafe_allow_html=True)
     else:
         st.sidebar.warning(f"Background image '{image_file}' not found.")
 
 set_ui_design('BackImage.jpg')
 
-# ==============================
-# HEADER SECTION
-# ==============================
+# =========================================================================
+# THE HEADER BOX (Matching image_bea43d.png)
+# =========================================================================
 st.markdown("""
 <div class="styled-header">
-    <h1>🌸 Sakura97 Stock Management</h1>
-    <p>Managed by: ZK7 Office</p>
-</div>
-""", unsafe_allow_html=True)
+    <h1 style='margin: 0; color: #FFFFFF !important; font-size: 38px; font-weight: 800;'>🌸 Sakura97 Stock Management</h1>
+    <p style='margin: 15px 0 0 0; color: #FFFFFF !important; font-size: 14px; font-weight: 400; opacity: 0.9;'>Managed by: ZK7 Office</p>
+</div>""", unsafe_allow_html=True)
 
 menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
 # ==============================
-# VIEW STOCK
+# 3. VIEW STOCK
 # ==============================
 if menu == "View Stock":
     st.subheader("📦 Current Inventory")
     df = pd.read_sql_query("SELECT product_name as 'Product', quantity as 'In Stock' FROM stock", conn)
-
+    
     if not df.empty:
         csv = df.to_csv(index=False).encode('utf-8')
         st.download_button("📊 Download Inventory (Excel/CSV)", data=csv, file_name="Sakura97_Inventory.csv", mime='text/csv')
-
+        
         for index, row in df.iterrows():
             with st.container():
                 col1, col2 = st.columns([1,4])
                 img_p = f"images/{row['Product']}.png"
                 with col1:
-                    if os.path.exists(img_p):
-                        st.image(img_p, use_container_width=True)
-                    else:
-                        st.caption("No Image")
+                    if os.path.exists(img_p): st.image(img_p, use_container_width=True)
+                    else: st.caption("No Image")
                 with col2:
                     st.markdown(f"### {row['Product']}")
                     st.write(f"**Quantity Available:** {row['In Stock']} units")
@@ -159,28 +140,25 @@ if menu == "View Stock":
         st.info("No items in stock.")
 
 # ==============================
-# STOCK IN
+# 4. STOCK IN
 # ==============================
 elif menu == "Stock In":
     st.subheader("📥 Add/Update Stock")
-
     with st.form("stock_in_form"):
         name = st.text_input("Product Name").strip()
         qty = st.number_input("Quantity to Add", min_value=1)
         img_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
         submitted = st.form_submit_button("Submit Stock In")
-
+        
         if submitted:
             if name:
                 img_path = f"images/{name}.png"
-                if img_file:
-                    Image.open(img_file).save(img_path)
-
+                if img_file: Image.open(img_file).save(img_path)
                 try:
                     c.execute("INSERT INTO stock (product_name, quantity, image_path) VALUES (?, ?, ?)", (name, qty, img_path))
                 except:
                     c.execute("UPDATE stock SET quantity = quantity + ? WHERE product_name = ?", (qty, name))
-
+                
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", (name, "IN", qty, now))
                 conn.commit()
@@ -189,34 +167,31 @@ elif menu == "Stock In":
                 st.error("Product name is required.")
 
 # ==============================
-# STOCK OUT
+# 5. STOCK OUT
 # ==============================
 elif menu == "Stock Out":
     st.subheader("📤 Remove Stock")
-
     c.execute("SELECT product_name FROM stock")
     products = [row[0] for row in c.fetchall()]
-
+    
     if products:
         selected_prod = st.selectbox("Search Product", products)
         qty_out = st.number_input("Quantity to Remove", min_value=1)
-
+        
         if st.button("Confirm Removal"):
             c.execute("SELECT quantity FROM stock WHERE product_name = ?", (selected_prod,))
             current_inv = c.fetchone()[0]
-
+            
             if qty_out <= current_inv:
                 new_inv = current_inv - qty_out
-
                 if new_inv == 0:
                     c.execute("DELETE FROM stock WHERE product_name = ?", (selected_prod,))
                 else:
                     c.execute("UPDATE stock SET quantity = ? WHERE product_name = ?", (new_inv, selected_prod))
-
+                
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", (selected_prod, "OUT", qty_out, now))
                 conn.commit()
-
                 st.success(f"✅ Removed {qty_out} units of {selected_prod}")
                 st.rerun()
             else:
@@ -225,17 +200,16 @@ elif menu == "Stock Out":
         st.warning("No products available to remove.")
 
 # ==============================
-# DAILY REPORTS
+# 6. DAILY REPORTS (Long-Term 2100)
 # ==============================
 elif menu == "Daily Reports":
     st.subheader("🗓 Transaction Archive (2026-2100)")
-
+    
     col_y, col_m = st.columns(2)
     with col_y:
         sel_year = st.selectbox("Year", list(range(2026, 2101)), index=0)
     with col_m:
-        months = ["January", "February", "March", "April", "May", "June",
-                  "July", "August", "September", "October", "November", "December"]
+        months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
         sel_month = st.selectbox("Month", months, index=datetime.now().month - 1)
 
     st.write("🔍 Filter by Day Range:")
@@ -247,32 +221,22 @@ elif menu == "Daily Reports":
 
     month_idx = f"{months.index(sel_month) + 1:02d}"
     search_str = f"{sel_year}-{month_idx}%"
-
-    report_df = pd.read_sql_query(
-        "SELECT date, product_name as 'Product', type as 'Action', qty as 'Quantity' "
-        "FROM transactions WHERE date LIKE ? ORDER BY date DESC",
-        conn, params=(search_str,)
-    )
-
+    report_df = pd.read_sql_query("SELECT date, product_name as 'Product', type as 'Action', qty as 'Quantity' FROM transactions WHERE date LIKE ? ORDER BY date DESC", conn, params=(search_str,))
+    
     if not report_df.empty:
         report_df['Date/Time'] = pd.to_datetime(report_df['date'])
         report_df['Day'] = report_df['Date/Time'].dt.day
-
         filtered_df = report_df[(report_df['Day'] >= start_day) & (report_df['Day'] <= end_day)]
         display_df = filtered_df[['Date/Time', 'Day', 'Product', 'Action', 'Quantity']]
-
+        
         if not display_df.empty:
             st.dataframe(display_df, use_container_width=True)
-
             total_in = display_df[display_df['Action'] == 'IN']['Quantity'].sum()
             total_out = display_df[display_df['Action'] == 'OUT']['Quantity'].sum()
-
-            st.info(f"📊 Summary: {total_in} units In | {total_out} units Out")
-
+            st.info(f"📊 **Summary (Day {start_day}-{end_day})**: {total_in} units In | {total_out} units Out")
+            
             csv_report = display_df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Report",
-                               data=csv_report,
-                               file_name=f"Sakura97_{sel_month}_{sel_year}.csv")
+            st.download_button(f"📥 Download Report", data=csv_report, file_name=f"Sakura97_{sel_month}_{sel_year}.csv")
         else:
             st.warning(f"No records for Day {start_day}-{end_day}.")
     else:
