@@ -7,26 +7,29 @@ from datetime import datetime
 from PIL import Image
 
 # ==============================
-# 1. GOOGLE SHEETS CONNECTION
+# 1. STABLE GOOGLE SHEETS CONNECTION
 # ==============================
-# Connects to your Sheet ID: 1bMPsjGBFMIJ01TtKY-pfEguJYCuSY_rSm4wcFFutTcQ
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_data(worksheet_name):
     try:
-        # ttl=0 is the "Zero-Cache" fix. It forces the app to read row 2 now.
-        df = conn.read(worksheet=worksheet_name, ttl=0)
+        # Changed ttl to 1 to fix the 'HTTP Error 400' while keeping data fresh
+        df = conn.read(worksheet=worksheet_name, ttl=1)
         if df is None or df.empty:
             if worksheet_name == "users": return pd.DataFrame(columns=["username", "password"])
             if worksheet_name == "stock": return pd.DataFrame(columns=["product_name", "quantity", "user_id"])
             if worksheet_name == "transactions": return pd.DataFrame(columns=["date", "product_name", "type", "qty", "user_id"])
         return df
     except Exception as e:
-        st.error(f"Sheet Connection Error: {e}")
-        return pd.DataFrame()
+        # If the 1s cache still fails, we use a standard 10s backup
+        try:
+            return conn.read(worksheet=worksheet_name, ttl=10)
+        except:
+            st.error(f"Cloud Connection Error: Please refresh the page.")
+            return pd.DataFrame()
 
 # ==============================
-# 2. UI & STYLING (The 97 Casino / ZK7 Office)
+# 2. UI & STYLING (ZK7 Office)
 # ==============================
 def set_ui_design(image_file):
     if os.path.exists(image_file):
@@ -55,7 +58,7 @@ set_ui_design('BackImage.jpg')
 if not os.path.exists("images"): os.makedirs("images")
 
 # ==============================
-# 3. LOGIN SYSTEM (CLEAN MATCHING)
+# 3. SECURE LOGIN SYSTEM
 # ==============================
 if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'username': ""})
@@ -72,7 +75,6 @@ if not st.session_state['logged_in']:
             if st.form_submit_button("Login"):
                 df = get_data("users")
                 if not df.empty:
-                    # Clean the data from the sheet to prevent "Ghost" errors
                     df['username'] = df['username'].astype(str).str.strip()
                     df['password'] = df['password'].astype(str).str.strip()
                     
@@ -82,9 +84,9 @@ if not st.session_state['logged_in']:
                         st.session_state.update({'logged_in': True, 'username': u_input})
                         st.rerun()
                     else:
-                        st.error("Access Denied: Check Row 2 in your Google Sheet.")
+                        st.error("Access Denied: Please check Row 2 in your Google Sheet.")
                 else:
-                    st.error("Database Error: 'users' tab is empty or not found.")
+                    st.error("Database Error: 'users' tab not found in Cloud.")
     
     with tab2:
         with st.form("signup"):
@@ -96,11 +98,11 @@ if not st.session_state['logged_in']:
                     new_row = pd.DataFrame([{"username": nu, "password": np}])
                     updated_df = pd.concat([df, new_row], ignore_index=True)
                     conn.update(worksheet="users", data=updated_df)
-                    st.success("User added to Cloud! Now try logging in.")
+                    st.success("New user saved to Cloud! Try logging in.")
     st.stop()
 
 # ==============================
-# 4. INVENTORY MANAGEMENT
+# 4. MAIN SYSTEM (Stock Management)
 # ==============================
 curr_user = st.session_state['username']
 st.sidebar.title(f"👤 {curr_user}")
@@ -112,7 +114,6 @@ st.markdown(f'<div class="styled-header"><h1>🌸 Sakura97 Stock Management</h1>
 
 menu = st.sidebar.selectbox("Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
-# --- VIEW STOCK ---
 if menu == "View Stock":
     stock_df = get_data("stock")
     if not stock_df.empty:
@@ -129,10 +130,9 @@ if menu == "View Stock":
                         st.subheader(row['product_name'])
                         st.write(f"Quantity: {row['quantity']} units")
                         st.markdown("---")
-        else: st.info("Inventory is empty.")
+        else: st.info("No items found.")
     else: st.warning("Stock tab is empty.")
 
-# --- STOCK IN ---
 elif menu == "Stock In":
     st.subheader("📥 Add Stock")
     with st.form("stock_in"):
@@ -152,14 +152,12 @@ elif menu == "Stock In":
                 if img_file: Image.open(img_file).save(f"images/{curr_user}_{name}.png")
                 conn.update(worksheet="stock", data=stock_df)
                 
-                # Transaction Log
                 trans_df = get_data("transactions")
                 new_t = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": name, "type": "IN", "qty": qty, "user_id": curr_user}])
                 conn.update(worksheet="transactions", data=pd.concat([trans_df, new_t], ignore_index=True))
-                st.success("Synced to Cloud!")
-            else: st.error("Product name required.")
+                st.success("Synced to Google Sheets!")
+            else: st.error("Name is required.")
 
-# --- STOCK OUT ---
 elif menu == "Stock Out":
     st.subheader("📤 Remove Stock")
     stock_df = get_data("stock")
@@ -174,14 +172,12 @@ elif menu == "Stock Out":
                     stock_df.at[idx, 'quantity'] -= q_out
                     conn.update(worksheet="stock", data=stock_df)
                     
-                    # Transaction Log
                     trans_df = get_data("transactions")
                     new_t = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": sel, "type": "OUT", "qty": q_out, "user_id": curr_user}])
                     conn.update(worksheet="transactions", data=pd.concat([trans_df, new_t], ignore_index=True))
-                    st.success("Cloud Updated!"); st.rerun()
-                else: st.error("Not enough stock available.")
+                    st.success("Updated!"); st.rerun()
+                else: st.error("Not enough stock.")
 
-# --- DAILY REPORTS ---
 elif menu == "Daily Reports":
     st.subheader("🗓 Transaction Archive")
     trans_df = get_data("transactions")
@@ -195,4 +191,4 @@ elif menu == "Daily Reports":
         report = trans_df[(trans_df['user_id'] == curr_user) & (trans_df['date_dt'].dt.year == y) & (trans_df['date_dt'].dt.month == m_idx)]
         if not report.empty:
             st.dataframe(report[['date', 'product_name', 'type', 'qty']], use_container_width=True)
-        else: st.info("No records for this month.")
+        else: st.info("No records found for this month.")
