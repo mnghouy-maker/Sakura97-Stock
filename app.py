@@ -12,7 +12,8 @@ from PIL import Image
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_data(worksheet):
-    return conn.read(worksheet=worksheet, ttl="0s") # No cache so it's always live
+    # ttl="0s" ensures we get the newest data every time
+    return conn.read(worksheet=worksheet, ttl="0s")
 
 # ==============================
 # 2. UI & STYLING
@@ -47,10 +48,11 @@ if not os.path.exists("images"): os.makedirs("images")
 # 3. AUTHENTICATION
 # ==============================
 if 'logged_in' not in st.session_state:
-    st.session_state.update({'logged_in': False, 'username': "", 'user_id': ""})
+    st.session_state.update({'logged_in': False, 'username': ""})
 
 if not st.session_state['logged_in']:
-    st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Secure Access</h1><p>ZK7 Office Cloud Database</p></div>', unsafe_allow_html=True)
+    # UPDATED HEADER TEXT HERE
+    st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Secure Access</h1><p>ZK7 Office</p></div>', unsafe_allow_html=True)
     tab1, tab2 = st.tabs(["Login", "Create Account"])
     
     with tab1:
@@ -58,12 +60,15 @@ if not st.session_state['logged_in']:
             u = st.text_input("Username")
             p = st.text_input("Password", type="password")
             if st.form_submit_button("Login"):
-                users_df = get_data("users")
-                match = users_df[(users_df['username'] == u) & (users_df['password'] == p)]
-                if not match.empty:
-                    st.session_state.update({'logged_in': True, 'username': u})
-                    st.rerun()
-                else: st.error("Wrong Username/Password")
+                try:
+                    users_df = get_data("users")
+                    match = users_df[(users_df['username'] == u) & (users_df['password'] == p)]
+                    if not match.empty:
+                        st.session_state.update({'logged_in': True, 'username': u})
+                        st.rerun()
+                    else: st.error("Wrong Username/Password")
+                except Exception as e:
+                    st.error("Connection Error: Please check if your Google Sheet is shared as 'Anyone with the link can edit'.")
 
     with tab2:
         with st.form("signup"):
@@ -88,7 +93,8 @@ if st.sidebar.button("Logout"):
     st.session_state['logged_in'] = False
     st.rerun()
 
-st.markdown(f'<div class="styled-header"><h1>🌸 Sakura97 Stock Management</h1><p>Cloud Synchronized: {curr_user}</p></div>', unsafe_allow_html=True)
+# UPDATED HEADER TEXT HERE
+st.markdown(f'<div class="styled-header"><h1>🌸 Sakura97 Stock Management</h1><p>ZK7 Office | {curr_user}</p></div>', unsafe_allow_html=True)
 
 menu = st.sidebar.selectbox("Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
@@ -112,12 +118,12 @@ if menu == "View Stock":
 
 # --- STOCK IN ---
 elif menu == "Stock In":
-    st.subheader("📥 Add Stock to Cloud")
+    st.subheader("📥 Add Stock")
     with st.form("stock_in"):
         name = st.text_input("Product Name").strip()
         qty = st.number_input("Quantity", min_value=1)
         img_file = st.file_uploader("Image", type=["jpg", "png"])
-        if st.form_submit_button("Update Sheet"):
+        if st.form_submit_button("Submit"):
             if name:
                 stock_df = get_data("stock")
                 idx = stock_df[(stock_df['user_id'] == curr_user) & (stock_df['product_name'] == name)].index
@@ -131,16 +137,15 @@ elif menu == "Stock In":
                 if img_file: Image.open(img_file).save(f"images/{curr_user}_{name}.png")
                 conn.update(worksheet="stock", data=stock_df)
                 
-                # Update Transactions
                 trans_df = get_data("transactions")
                 new_trans = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": name, "type": "IN", "qty": qty, "user_id": curr_user}])
                 conn.update(worksheet="transactions", data=pd.concat([trans_df, new_trans], ignore_index=True))
-                st.success("Cloud Updated!")
+                st.success("Successfully Updated!")
             else: st.error("Name required")
 
 # --- STOCK OUT ---
 elif menu == "Stock Out":
-    st.subheader("📤 Remove Stock from Cloud")
+    st.subheader("📤 Remove Stock")
     stock_df = get_data("stock")
     my_items = stock_df[stock_df['user_id'] == curr_user]['product_name'].tolist()
     if my_items:
@@ -155,12 +160,12 @@ elif menu == "Stock Out":
                 trans_df = get_data("transactions")
                 new_t = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": sel, "type": "OUT", "qty": q_out, "user_id": curr_user}])
                 conn.update(worksheet="transactions", data=pd.concat([trans_df, new_t], ignore_index=True))
-                st.success("Cloud Updated!"); st.rerun()
+                st.success("Updated!"); st.rerun()
             else: st.error("Not enough stock!")
 
 # --- DAILY REPORTS ---
 elif menu == "Daily Reports":
-    st.subheader("🗓 Cloud Archive")
+    st.subheader("🗓 My Archive")
     y = st.selectbox("Year", list(range(2026, 2101)))
     m_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
     m = st.selectbox("Month", m_names, index=datetime.now().month-1)
@@ -169,15 +174,16 @@ elif menu == "Daily Reports":
     e_day = st.number_input("To Day", 1, 31, 31)
 
     trans_df = get_data("transactions")
-    trans_df['Date/Time'] = pd.to_datetime(trans_df['date'])
-    
-    m_idx = m_names.index(m) + 1
-    report = trans_df[(trans_df['user_id'] == curr_user) & 
-                      (trans_df['Date/Time'].dt.year == y) & 
-                      (trans_df['Date/Time'].dt.month == m_idx) &
-                      (trans_df['Date/Time'].dt.day >= s_day) &
-                      (trans_df['Date/Time'].dt.day <= e_day)]
-    
-    if not report.empty:
-        st.dataframe(report[['date', 'product_name', 'type', 'qty']], use_container_width=True)
-    else: st.write("No data for this range.")
+    if not trans_df.empty:
+        trans_df['Date/Time'] = pd.to_datetime(trans_df['date'])
+        m_idx = m_names.index(m) + 1
+        report = trans_df[(trans_df['user_id'] == curr_user) & 
+                          (trans_df['Date/Time'].dt.year == y) & 
+                          (trans_df['Date/Time'].dt.month == m_idx) &
+                          (trans_df['Date/Time'].dt.day >= s_day) &
+                          (trans_df['Date/Time'].dt.day <= e_day)]
+        
+        if not report.empty:
+            st.dataframe(report[['date', 'product_name', 'type', 'qty']], use_container_width=True)
+        else: st.write("No data for this range.")
+    else: st.write("No transactions yet.")
