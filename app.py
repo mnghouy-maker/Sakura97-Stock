@@ -10,6 +10,8 @@ from PIL import Image
 # ==============================
 # 1. DATABASE & DIRECTORY SETUP
 # ==============================
+# This connects to a local file named stock.db. 
+# On GitHub/Streamlit Cloud, this file is temporary unless persistent storage is set up.
 conn = sqlite3.connect('stock.db', check_same_thread=False)
 c = conn.cursor()
 
@@ -30,7 +32,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS transactions
 c.execute('''CREATE TABLE IF NOT EXISTS users 
              (username TEXT PRIMARY KEY, password TEXT)''')
 
-# Ensure image folder exists
+# Ensure image folder exists for product photos
 if not os.path.exists("images"):
     os.makedirs("images")
 
@@ -98,7 +100,7 @@ def set_ui_design(image_file):
             <div class="corner-footer">Created by: Sino Menghuy</div>
         """, unsafe_allow_html=True)
     else:
-        st.sidebar.warning("Background 'BackImage.jpg' not found.")
+        st.sidebar.warning("Background 'BackImage.jpg' not found. Please upload it to your GitHub repo.")
 
 set_ui_design('BackImage.jpg')
 
@@ -117,6 +119,7 @@ if not st.session_state['logged_in']:
     
     auth_mode = st.sidebar.selectbox("Access Mode", ["Login", "Sign Up"])
     
+    # -------- SIGN UP --------
     if auth_mode == "Sign Up":
         st.subheader("Create New Account")
         new_user = st.text_input("New Username").strip()
@@ -128,15 +131,13 @@ if not st.session_state['logged_in']:
                     c.execute('INSERT INTO users(username, password) VALUES (?,?)', 
                               (new_user, make_hashes(new_pass)))
                     conn.commit()
-                    st.session_state['logged_in'] = True
-                    st.session_state['user'] = new_user
-                    st.success(f"Account created and logged in as '{new_user}'!")
-                    st.rerun()
+                    st.success(f"Account created! You can now switch to Login mode.")
                 except sqlite3.IntegrityError:
                     st.error("Username already exists.")
             else:
                 st.warning("Please fill all fields.")
     
+    # -------- LOGIN --------
     elif auth_mode == "Login":
         st.subheader("Login to Sakura97")
         user = st.text_input("Username").strip()
@@ -151,7 +152,7 @@ if not st.session_state['logged_in']:
                 st.success(f"Logged in as '{user}'")
                 st.rerun()
             else:
-                st.error("Invalid Username or Password")
+                st.error("Invalid Username or Password. If first time, please Sign Up.")
 
 # ==============================
 # 6. MAIN APP (LOGGED IN)
@@ -263,6 +264,8 @@ else:
 
         month_idx = f"{months.index(sel_month) + 1:02d}"
         search_str = f"{sel_year}-{month_idx}%"
+        
+        # Correctly indented database query and display logic
         report_df = pd.read_sql_query(
             "SELECT date, product_name as 'Product', type as 'Action', qty as 'Quantity' "
             "FROM transactions WHERE date LIKE ? ORDER BY date DESC", 
