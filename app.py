@@ -4,7 +4,6 @@ import os
 import base64
 import pandas as pd
 import hashlib
-import calendar
 from datetime import datetime
 from PIL import Image
 from io import BytesIO
@@ -94,12 +93,18 @@ def set_ui_design(image_file):
                 padding: 20px;
                 border-radius: 15px;
             }}
+            .stMetric {{
+                background-color: rgba(255, 255, 255, 0.8);
+                padding: 15px;
+                border-radius: 10px;
+                text-align: center;
+            }}
             h1, h2, h3, p {{ color: #1E1E1E; }}
             </style>
             <div class="corner-footer">Created by: Sino Menghuy</div>
         """, unsafe_allow_html=True)
     else:
-        st.sidebar.warning("Background 'BackImage.jpg' not found.")
+        st.sidebar.warning(f"Background '{image_file}' not found.")
 
 set_ui_design('BackImage.jpg')
 
@@ -144,7 +149,7 @@ if not st.session_state['logged_in']:
                 st.session_state['user'] = user
                 st.rerun()
             else:
-                st.error("Invalid credentials.")
+                st.error("Invalid Username or Password.")
 
 # ==============================
 # 6. MAIN APP (LOGGED IN)
@@ -153,7 +158,7 @@ else:
     st.sidebar.success(f"Welcome, {st.session_state['user']}")
     if st.sidebar.button("Log Out"):
         st.session_state['logged_in'] = False
-        st.session_state.clear()
+        st.session_state['user'] = None
         st.rerun()
 
     st.markdown("""
@@ -221,77 +226,81 @@ else:
                     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", (selected_prod, "OUT", qty_out, now))
                     conn.commit()
-                    st.success("✅ Removed successfully.")
+                    st.success(f"✅ Removed {qty_out} units.")
                     st.rerun()
-                else: st.error("Not enough stock!")
+                else: st.error(f"Not enough stock! Balance: {current_inv}")
 
-    # -------- DAILY REPORTS --------
+    # -------- DAILY REPORTS (Custom Date Range) --------
     elif menu == "Daily Reports":
-        st.subheader("🗓 Transaction Archive")
-        col_y, col_m = st.columns(2)
-        with col_y:
-            sel_year = st.selectbox("Year", list(range(2025, 2101)), index=1)
-        with col_m:
-            months = ["January", "February", "March", "April", "May", "June", "July", 
-                      "August", "September", "October", "November", "December"]
-            sel_month = st.selectbox("Month", months, index=datetime.now().month - 1)
-
-        month_idx = months.index(sel_month) + 1
-        month_str = f"{month_idx:02d}"
-        search_str = f"{sel_year}-{month_str}%"
+        st.subheader("🗓 Transaction Archive & Custom Reports")
         
-        report_df = pd.read_sql_query(
-            "SELECT date, product_name as 'Product', type as 'Action', qty as 'Quantity' "
-            "FROM transactions WHERE date LIKE ? ORDER BY date DESC", 
-            conn, params=(search_str,)
-        )
+        # 1. Date Range Selection
+        col_start, col_end = st.columns(2)
+        with col_start:
+            start_date = st.date_input("Start Date", datetime.now().replace(day=1))
+        with col_end:
+            end_date = st.date_input("End Date", datetime.now())
 
-        if not report_df.empty:
-            st.dataframe(report_df, use_container_width=True)
-            
-            # --- EXPORTS ---
-            st.write("### 📥 Download Reports")
-            e_col1, e_col2 = st.columns(2)
-            
-            # Excel
-            output_excel = BytesIO()
-            with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
-                report_df.to_excel(writer, index=False, sheet_name='Report')
-            e_col1.download_button("🟢 Download Excel", output_excel.getvalue(), 
-                                 f"Report_{sel_month}_{sel_year}.xlsx", 
-                                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            
-            # PDF
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", 'B', 16)
-            pdf.cell(190, 10, f"Sakura97 Monthly Report - {sel_month} {sel_year}", ln=True, align='C')
-            pdf.ln(10)
-            pdf.set_font("Arial", 'B', 10)
-            pdf.cell(45, 10, "Date", 1); pdf.cell(65, 10, "Product", 1); pdf.cell(40, 10, "Action", 1); pdf.cell(30, 10, "Qty", 1); pdf.ln()
-            pdf.set_font("Arial", '', 10)
-            for _, r in report_df.iterrows():
-                pdf.cell(45, 10, str(r['date'])[:10], 1)
-                pdf.cell(65, 10, str(r['Product']), 1)
-                pdf.cell(40, 10, str(r['Action']), 1)
-                pdf.cell(30, 10, str(r['Quantity']), 1); pdf.ln()
-            
-            e_col2.download_button("🔴 Download PDF", pdf.output(dest='S').encode('latin-1'), 
-                                 f"Report_{sel_month}_{sel_year}.pdf", "application/pdf")
+        if start_date > end_date:
+            st.error("Error: Start Date must be before End Date.")
         else:
-            st.info(f"No activity for {sel_month} {sel_year}.")
+            # 2. Fetch data based on range
+            query = """
+                SELECT date, product_name as 'Product', type as 'Action', qty as 'Quantity' 
+                FROM transactions 
+                WHERE date(date) BETWEEN date(?) AND date(?)
+                ORDER BY date DESC
+            """
+            report_df = pd.read_sql_query(query, conn, params=(str(start_date), str(end_date)))
 
-        # --- FULL MONTHLY CALENDAR VIEW ---
-        st.markdown("---")
-        st.subheader(f"📅 Daily Summary for {sel_month}")
-        num_days = calendar.monthrange(sel_year, month_idx)[1]
-        daily_list = []
-        for d in range(1, num_days + 1):
-            d_str = f"{sel_year}-{month_str}-{d:02d}"
-            day_acts = report_df[report_df['date'].str.contains(d_str)]
-            daily_list.append({
-                "Date": d_str,
-                "Status": "✅ Active" if not day_acts.empty else "⚪ No Activity",
-                "Transactions": len(day_acts)
-            })
-        st.table(pd.DataFrame(daily_list))
+            if not report_df.empty:
+                st.info(f"Report for: {start_date} to {end_date}")
+                st.dataframe(report_df, use_container_width=True)
+                
+                # --- EXPORTS ---
+                st.markdown("### 📥 Download Reports")
+                col_ex1, col_ex2 = st.columns(2)
+
+                # Excel
+                output_excel = BytesIO()
+                with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
+                    report_df.to_excel(writer, index=False, sheet_name='Summary')
+                col_ex1.download_button(
+                    label="🟢 Download Excel",
+                    data=output_excel.getvalue(),
+                    file_name=f"Report_{start_date}_to_{end_date}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+
+                # PDF
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", 'B', 16)
+                pdf.cell(190, 10, f"Stock Report: {start_date} to {end_date}", ln=True, align='C')
+                pdf.ln(10)
+                pdf.set_font("Arial", 'B', 10)
+                pdf.cell(45, 10, "Date", 1); pdf.cell(65, 10, "Product", 1); pdf.cell(40, 10, "Action", 1); pdf.cell(30, 10, "Qty", 1); pdf.ln()
+                pdf.set_font("Arial", '', 10)
+                for _, r in report_df.iterrows():
+                    pdf.cell(45, 10, str(r['date'])[:10], 1)
+                    pdf.cell(65, 10, str(r['Product']), 1)
+                    pdf.cell(40, 10, str(r['Action']), 1)
+                    pdf.cell(30, 10, str(r['Quantity']), 1); pdf.ln()
+                
+                col_ex2.download_button(
+                    label="🔴 Download PDF",
+                    data=pdf.output(dest='S').encode('latin-1'),
+                    file_name=f"Report_{start_date}_to_{end_date}.pdf",
+                    mime="application/pdf"
+                )
+
+                # 3. Summary Metrics
+                st.markdown("---")
+                st.subheader("📊 Period Totals")
+                m_col1, m_col2 = st.columns(2)
+                total_in = report_df[report_df['Action'] == 'IN']['Quantity'].sum()
+                total_out = report_df[report_df['Action'] == 'OUT']['Quantity'].sum()
+                m_col1.metric("Total Stock In", f"{total_in} units")
+                m_col2.metric("Total Stock Out", f"{total_out} units")
+            else:
+                st.warning(f"No transactions found between {start_date} and {end_date}.")
