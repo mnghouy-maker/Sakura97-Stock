@@ -168,7 +168,7 @@ else:
 
     st.markdown("""
     <div class="styled-header">
-        <h1 style='margin: 0; color: #FFFFFF !important; font-size: 38px; font-weight: 800;'>🌸 SK97 Stock Management</h1>
+        <h1 style='margin: 0; color: #FFFFFF !important; font-size: 38px; font-weight: 800;'>🌸 Sakura97 Stock Management</h1>
         <p style='margin: 15px 0 0 0; color: #FFFFFF !important; font-size: 14px; font-weight: 400; opacity: 0.9;'>Managed by: ZK7 Office</p>
     </div>""", unsafe_allow_html=True)
 
@@ -290,4 +290,3 @@ else:
                 st.warning(f"No records for Day {start_day}-{end_day}.")
         else:
             st.write(f"No activity for {sel_month} {sel_year}.")
-
