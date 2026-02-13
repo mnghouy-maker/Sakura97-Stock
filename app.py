@@ -13,13 +13,18 @@ from PIL import Image
 conn = sqlite3.connect('stock.db', check_same_thread=False)
 c = conn.cursor()
 
-c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
+c.execute('''CREATE TABLE IF NOT EXISTS users 
+             (username TEXT PRIMARY KEY, password TEXT)''')
+
 c.execute('''CREATE TABLE IF NOT EXISTS stock 
-             (id INTEGER PRIMARY KEY AUTOINCREMENT, product_name TEXT UNIQUE, 
-              quantity INTEGER, image_path TEXT)''')
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+             product_name TEXT UNIQUE, 
+             quantity INTEGER, 
+             image_path TEXT)''')
+
 c.execute('''CREATE TABLE IF NOT EXISTS transactions 
-             (id INTEGER PRIMARY KEY AUTOINCREMENT, product_name TEXT, 
-              type TEXT, qty INTEGER, date TEXT)''')
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+             product_name TEXT, type TEXT, qty INTEGER, date TEXT)''')
 conn.commit()
 
 def make_hashes(password):
@@ -30,7 +35,8 @@ def create_user(username, password):
         c.execute('INSERT INTO users(username,password) VALUES (?,?)', (username, make_hashes(password)))
         conn.commit()
         return True
-    except: return False
+    except:
+        return False
 
 def login_user(username, password):
     c.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, make_hashes(password)))
@@ -40,7 +46,7 @@ if not os.path.exists("images"):
     os.makedirs("images")
 
 # ==============================
-# 2. PREMIUM UI & FONT STYLING
+# 2. UI & FULL BACKGROUND STYLING
 # ==============================
 def set_ui_design(image_file):
     if os.path.exists(image_file):
@@ -49,14 +55,7 @@ def set_ui_design(image_file):
         encoded_string = base64.b64encode(data).decode()
         st.markdown(f"""
             <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-
-            /* Global Font Settings */
-            html, body, [class*="st-"] {{
-                font-family: 'Inter', sans-serif !important;
-            }}
-
-            /* Full Screen Background */
+            /* Full Background Image */
             .stApp {{
                 background-image: url("data:image/png;base64,{encoded_string}");
                 background-attachment: fixed;
@@ -64,157 +63,168 @@ def set_ui_design(image_file):
                 background-position: center;
             }}
 
-            /* Professional Sidebar (Glass) */
-            [data-testid="stSidebar"] {{
-                background-color: rgba(15, 15, 15, 0.7) !important;
-                backdrop-filter: blur(15px);
-                border-right: 1px solid rgba(255,255,255,0.1);
+            /* Glass effect for Sidebar */
+            [data-testid="stSidebar"] {{ 
+                background-color: rgba(0, 0, 0, 0.6) !important; 
+                backdrop-filter: blur(15px); 
+            }}
+            
+            /* Sidebar text colors */
+            [data-testid="stSidebar"] * {{
+                color: white !important;
             }}
 
-            /* Main Header Design */
-            .main-header {{
-                background: rgba(255, 255, 255, 0.1);
-                backdrop-filter: blur(10px);
-                padding: 40px;
-                border-radius: 24px;
-                text-align: center;
-                border: 1px solid rgba(255, 255, 255, 0.2);
+            /* Header Box Styling */
+            .styled-header {{ 
+                background-color: rgba(38, 39, 48, 0.85); 
+                padding: 30px; 
+                border-radius: 20px; 
+                text-align: center; 
+                color: white; 
                 margin-bottom: 30px;
-                box-shadow: 0 15px 35px rgba(0,0,0,0.2);
-            }}
-            .main-header h1 {{ color: white !important; font-weight: 700; letter-spacing: -1px; }}
-            .main-header p {{ color: rgba(255,255,255,0.8) !important; font-weight: 300; }}
-
-            /* Content Cards */
-            .content-card {{
-                background: white;
-                padding: 25px;
-                border-radius: 16px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-                margin-bottom: 15px;
-                border-left: 5px solid #1E1E1E;
+                box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+                backdrop-filter: blur(4px);
+                border: 1px solid rgba(255, 255, 255, 0.1);
             }}
 
-            /* Footer Fixed Bottom Left */
-            .footer-credit {{
+            .corner-footer {{
                 position: fixed;
                 left: 20px;
                 bottom: 20px;
-                background: rgba(0, 0, 0, 0.8);
-                color: #ffffff !important;
-                padding: 12px 24px;
-                border-radius: 12px;
-                font-size: 13px;
-                font-weight: 600;
-                letter-spacing: 0.5px;
-                z-index: 1000;
-                border: 1px solid rgba(255,255,255,0.1);
+                background-color: #262730;
+                color: white;
+                padding: 10px 20px;
+                border-radius: 50px;
+                z-index: 9999;
+                font-weight: bold;
             }}
 
-            /* Button Styling */
-            .stButton>button {{
-                width: 100%;
-                border-radius: 8px !important;
-                font-weight: 600 !important;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-                padding: 10px !important;
+            /* Text Visibility Classes */
+            .black-text {{ color: black !important; font-weight: bold; }}
+            .white-text {{ color: white !important; }}
+
+            /* Form / Card Styling */
+            .stForm {{
+                background-color: rgba(255, 255, 255, 0.9) !important;
+                padding: 25px !important;
+                border-radius: 15px !important;
             }}
             </style>
-            <div class="footer-credit">Created by: Sino Menghuy</div>
+            <div class="corner-footer">Created by: Sino Menghuy</div>
         """, unsafe_allow_html=True)
+    else:
+        st.error(f"Error: '{image_file}' not found. Please upload your building image and rename it to 'BackImage.jpg'.")
 
 set_ui_design('BackImage.jpg')
 
 # ==============================
-# 3. LOGIN & ACCESS CONTROL
+# 3. AUTHENTICATION LOGIC
 # ==============================
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
+st.sidebar.title("🔐 Access Control")
+auth_mode = st.sidebar.selectbox("Action", ["Login", "Sign Up"])
+
 if not st.session_state['logged_in']:
-    st.markdown('<div class="main-header"><h1>🌸 Sakura97</h1><p>Executive Stock Management System</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Stock System</h1><p>Welcome to SK97 Smart Management</p></div>', unsafe_allow_html=True)
     
+    # Login Box Styling
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        tab1, tab2 = st.tabs(["Secure Login", "Register"])
-        with tab1:
-            u = st.text_input("Username", key="login_u")
-            p = st.text_input("Password", type="password", key="login_p")
-            if st.button("Access System"):
-                if login_user(u, p):
-                    st.session_state['logged_in'] = True
-                    st.session_state['user'] = u
-                    st.rerun()
-                else: st.error("Invalid Credentials")
-        with tab2:
-            nu = st.text_input("New Username")
-            np = st.text_input("New Password", type="password")
-            if st.button("Create Account"):
-                if create_user(nu, np): st.success("Account Ready. Please Login.")
-                else: st.error("Username taken.")
+        with st.form("auth_form"):
+            if auth_mode == "Sign Up":
+                st.markdown('<h2 class="black-text">Create Account</h2>', unsafe_allow_html=True)
+                new_user = st.text_input("Username")
+                new_pass = st.text_input("Password", type='password')
+                if st.form_submit_button("Register"):
+                    if create_user(new_user, new_pass):
+                        st.success("Account created! Now select Login in the sidebar.")
+                    else: st.error("Username already exists.")
+            else:
+                st.markdown('<h2 class="black-text">User Login</h2>', unsafe_allow_html=True)
+                user = st.text_input("Username")
+                password = st.text_input("Password", type='password')
+                if st.form_submit_button("Login"):
+                    if login_user(user, password):
+                        st.session_state['logged_in'] = True
+                        st.session_state['user'] = user
+                        st.rerun()
+                    else: st.error("Invalid Username or Password")
 
 # ==============================
-# 4. PROTECTED APP CONTENT
+# 4. MAIN APP CONTENT
 # ==============================
 else:
-    st.sidebar.markdown(f"### 👤 {st.session_state['user']}")
+    st.sidebar.success(f"User: {st.session_state['user']}")
     if st.sidebar.button("Logout"):
         st.session_state['logged_in'] = False
         st.rerun()
 
-    menu = st.sidebar.radio("NAVIGATION", ["Inventory Overview", "Stock In", "Stock Out", "Audit Reports"])
+    st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Stock Management</h1><p>Managed by: ZK7 Office</p></div>', unsafe_allow_html=True)
     
-    st.markdown(f'<div class="main-header"><h1>{menu}</h1><p>Sakura97 Corporate Terminal</p></div>', unsafe_allow_html=True)
+    menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
-    if menu == "Inventory Overview":
-        df = pd.read_sql_query("SELECT product_name, quantity FROM stock", conn)
+    if menu == "View Stock":
+        st.markdown('<h3 class="black-text" style="background:white; padding:10px; border-radius:10px;">📦 Current Inventory</h3>', unsafe_allow_html=True)
+        df = pd.read_sql_query("SELECT product_name as 'Product', quantity as 'In Stock' FROM stock", conn)
         if not df.empty:
-            for _, row in df.iterrows():
-                st.markdown(f"""
-                <div class="content-card">
-                    <h3 style="margin:0; color:#1E1E1E;">{row['product_name']}</h3>
-                    <p style="margin:5px 0 0 0; color:#666;">Current Balance: <b>{row['quantity']} Units</b></p>
-                </div>
-                """, unsafe_allow_html=True)
-        else: st.info("Warehouse currently empty.")
+            for index, row in df.iterrows():
+                with st.container():
+                    # Content inside white card for visibility
+                    st.markdown(f"""
+                    <div style="background:white; padding:20px; border-radius:10px; margin-bottom:10px; color:black;">
+                        <h4>{row['Product']}</h4>
+                        <p>Quantity: {row['In Stock']} units</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+        else:
+            st.info("No items in stock.")
 
     elif menu == "Stock In":
-        with st.form("in_form"):
-            name = st.text_input("Product Identifier")
-            qty = st.number_input("Unit Quantity", min_value=1)
-            if st.form_submit_button("Confirm Inbound"):
+        st.markdown('<h3 class="black-text" style="background:white; padding:10px; border-radius:10px;">📥 Stock Entry</h3>', unsafe_allow_html=True)
+        with st.form("stock_in"):
+            name = st.text_input("Product Name").strip()
+            qty = st.number_input("Quantity", min_value=1)
+            img_file = st.file_uploader("Upload Product Image", type=["jpg", "png"])
+            if st.form_submit_button("Submit Stock"):
                 if name:
+                    img_path = f"images/{name}.png"
+                    if img_file: Image.open(img_file).save(img_path)
                     try:
-                        c.execute("INSERT INTO stock (product_name, quantity) VALUES (?, ?)", (name, qty))
+                        c.execute("INSERT INTO stock (product_name, quantity, image_path) VALUES (?, ?, ?)", (name, qty, img_path))
                     except:
                         c.execute("UPDATE stock SET quantity = quantity + ? WHERE product_name = ?", (qty, name))
-                    c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", 
-                              (name, "IN", qty, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", (name, "IN", qty, now))
                     conn.commit()
-                    st.success(f"Log Updated: {name} units added.")
-                else: st.error("Product name required.")
+                    st.success(f"Recorded: {qty} units of {name}")
+                else: st.error("Name is required.")
 
     elif menu == "Stock Out":
+        st.markdown('<h3 class="black-text" style="background:white; padding:10px; border-radius:10px;">📤 Remove Stock</h3>', unsafe_allow_html=True)
         c.execute("SELECT product_name FROM stock")
-        prods = [r[0] for r in c.fetchall()]
-        if prods:
-            with st.form("out_form"):
-                sel = st.selectbox("Select Product", prods)
-                q = st.number_input("Units to Remove", min_value=1)
-                if st.form_submit_button("Confirm Outbound"):
-                    c.execute("SELECT quantity FROM stock WHERE product_name = ?", (sel,))
-                    curr = c.fetchone()[0]
-                    if q <= curr:
-                        c.execute("UPDATE stock SET quantity = ? WHERE product_name = ?", (curr - q, sel))
-                        c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", 
-                                  (sel, "OUT", q, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        products = [row[0] for row in c.fetchall()]
+        if products:
+            with st.form("stock_out"):
+                selected_prod = st.selectbox("Select Product", products)
+                qty_out = st.number_input("Quantity to Remove", min_value=1)
+                if st.form_submit_button("Confirm Removal"):
+                    c.execute("SELECT quantity FROM stock WHERE product_name = ?", (selected_prod,))
+                    current = c.fetchone()[0]
+                    if qty_out <= current:
+                        new_qty = current - qty_out
+                        if new_qty == 0: c.execute("DELETE FROM stock WHERE product_name = ?", (selected_prod,))
+                        else: c.execute("UPDATE stock SET quantity = ? WHERE product_name = ?", (new_qty, selected_prod))
+                        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", (selected_prod, "OUT", qty_out, now))
                         conn.commit()
-                        st.success("Outbound transaction finalized.")
+                        st.success("Stock updated successfully.")
                         st.rerun()
-                    else: st.error("Inadequate stock levels.")
+                    else: st.error("Insufficient stock!")
+        else: st.warning("Inventory is empty.")
 
-    elif menu == "Audit Reports":
-        st.write("### Internal Audit Logs")
-        report = pd.read_sql_query("SELECT * FROM transactions ORDER BY date DESC", conn)
-        st.dataframe(report, use_container_width=True)
+    elif menu == "Daily Reports":
+        st.markdown('<h3 class="black-text" style="background:white; padding:10px; border-radius:10px;">🗓 Transaction History</h3>', unsafe_allow_html=True)
+        st.info("Authorized area: Transaction logs are secured.")
+        # Filter logic can go here...
