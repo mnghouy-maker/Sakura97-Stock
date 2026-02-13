@@ -9,13 +9,21 @@ from PIL import Image
 # ==============================
 # 1. GOOGLE SHEETS CONNECTION
 # ==============================
+# Connects using the ID in your Streamlit Secrets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_data(worksheet_name):
     try:
-        # ttl=0 ensures the app always sees your newest spreadsheet updates
-        return conn.read(worksheet=worksheet_name, ttl="0s")
+        # ttl="0s" ensures the office always sees live data
+        df = conn.read(worksheet=worksheet_name, ttl="0s")
+        if df is None or df.empty:
+            if worksheet_name == "users": return pd.DataFrame(columns=["username", "password"])
+            if worksheet_name == "stock": return pd.DataFrame(columns=["product_name", "quantity", "user_id"])
+            if worksheet_name == "transactions": return pd.DataFrame(columns=["date", "product_name", "type", "qty", "user_id"])
+        return df
     except Exception:
+        # Returns an empty structured dataframe if the tab is missing or connection fails
+        if worksheet_name == "users": return pd.DataFrame(columns=["username", "password"])
         return pd.DataFrame()
 
 # ==============================
@@ -34,7 +42,7 @@ def set_ui_design(image_file):
                 background-size: cover;
                 background-position: center;
             }}
-            [data-testid="stSidebar"] {{ background-color: rgba(0, 0, 0, 0.7) !important; backdrop-filter: blur(10px); }}
+            [data-testid="stSidebar"] {{ background-color: rgba(0, 0, 0, 0.8) !important; backdrop-filter: blur(10px); }}
             .styled-header {{ 
                 background-color: #262730; 
                 padding: 30px; border-radius: 20px; text-align: center; margin-bottom: 30px; 
@@ -54,7 +62,7 @@ if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'username': ""})
 
 if not st.session_state['logged_in']:
-    st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Secure Access</h1><p>ZK7 Office</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Secure Access</h1><p>ZK7 Office Cloud</p></div>', unsafe_allow_html=True)
     tab1, tab2 = st.tabs(["Login", "Create Account"])
     
     with tab1:
@@ -64,7 +72,7 @@ if not st.session_state['logged_in']:
             if st.form_submit_button("Login"):
                 df = get_data("users")
                 if not df.empty:
-                    # FORCE all data to be clean strings to prevent matching errors
+                    # Clean data to match text exactly as a string
                     df['username'] = df['username'].astype(str).str.strip()
                     df['password'] = df['password'].astype(str).str.strip()
                     
@@ -72,22 +80,23 @@ if not st.session_state['logged_in']:
                     if not match.empty:
                         st.session_state.update({'logged_in': True, 'username': u_input})
                         st.rerun()
-                st.error("Access Denied: Please check your login details or re-type row 2 in your Google Sheet.")
+                st.error("Access Denied: Please re-type row 2 in your Google Sheet or check credentials.")
     
     with tab2:
         with st.form("signup"):
             nu = st.text_input("New Username").strip()
             np = st.text_input("New Password", type="password").strip()
             if st.form_submit_button("Sign Up"):
-                df = get_data("users")
-                new_row = pd.DataFrame([{"username": nu, "password": np}])
-                updated_df = pd.concat([df, new_row], ignore_index=True) if not df.empty else new_row
-                conn.update(worksheet="users", data=updated_df)
-                st.success("Account created! Go to Login tab.")
+                if nu and np:
+                    df = get_data("users")
+                    new_row = pd.DataFrame([{"username": nu, "password": np}])
+                    updated_df = pd.concat([df, new_row], ignore_index=True)
+                    conn.update(worksheet="users", data=updated_df)
+                    st.success("Account created! You can now log in.")
     st.stop()
 
 # ==============================
-# 4. MAIN SYSTEM
+# 4. MAIN APPLICATION
 # ==============================
 curr_user = st.session_state['username']
 st.sidebar.title(f"👤 {curr_user}")
@@ -116,7 +125,7 @@ if menu == "View Stock":
                         st.subheader(row['product_name'])
                         st.write(f"Quantity: {row['quantity']} units")
                         st.markdown("---")
-        else: st.info("No stock items found for your account.")
+        else: st.info("No items in your inventory.")
     else: st.warning("Stock database is empty.")
 
 # --- STOCK IN ---
@@ -142,7 +151,7 @@ elif menu == "Stock In":
                 trans_df = get_data("transactions")
                 new_t = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": name, "type": "IN", "qty": qty, "user_id": curr_user}])
                 conn.update(worksheet="transactions", data=pd.concat([trans_df, new_t], ignore_index=True))
-                st.success("Successfully synced to Google Sheets!")
+                st.success("Successfully saved to Google Sheets!")
             else: st.error("Product name is required.")
 
 # --- STOCK OUT ---
@@ -163,7 +172,7 @@ elif menu == "Stock Out":
                     trans_df = get_data("transactions")
                     new_t = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": sel, "type": "OUT", "qty": q_out, "user_id": curr_user}])
                     conn.update(worksheet="transactions", data=pd.concat([trans_df, new_t], ignore_index=True))
-                    st.success("Stock updated and logged!"); st.rerun()
+                    st.success("Stock updated!"); st.rerun()
                 else: st.error("Error: Not enough stock.")
 
 # --- DAILY REPORTS ---
@@ -180,4 +189,4 @@ elif menu == "Daily Reports":
         report = trans_df[(trans_df['user_id'] == curr_user) & (trans_df['date_dt'].dt.year == y) & (trans_df['date_dt'].dt.month == m_idx)]
         if not report.empty:
             st.dataframe(report[['date', 'product_name', 'type', 'qty']], use_container_width=True)
-        else: st.info("No records for this month.")
+        else: st.info("No records for this period.")
