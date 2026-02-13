@@ -5,6 +5,7 @@ import base64
 import pandas as pd
 from datetime import datetime
 from PIL import Image
+import hashlib
 
 # ==============================
 # 1. DATABASE & DIRECTORY SETUP
@@ -27,13 +28,12 @@ c.execute('''CREATE TABLE IF NOT EXISTS transactions
               qty INTEGER, 
               date TEXT)''')
 
-# ---- USER TABLE (NEW) ----
+# ---- USERS TABLE ----
 c.execute('''CREATE TABLE IF NOT EXISTS users
              (id INTEGER PRIMARY KEY AUTOINCREMENT,
               username TEXT UNIQUE,
               password TEXT)''')
 
-# Add image_path column if not exists
 try:
     c.execute("ALTER TABLE stock ADD COLUMN image_path TEXT")
 except sqlite3.OperationalError:
@@ -41,12 +41,11 @@ except sqlite3.OperationalError:
 
 conn.commit()
 
-# Create images folder if not exists
 if not os.path.exists("images"):
     os.makedirs("images")
 
 # ==============================
-# 2. UI, STYLING & FULL BACKGROUND
+# 2. UI, STYLING & BACKGROUND
 # ==============================
 def set_ui_design(image_file):
     if os.path.exists(image_file):
@@ -55,24 +54,19 @@ def set_ui_design(image_file):
         encoded_string = base64.b64encode(data).decode()
         st.markdown(f"""
             <style>
-            /* Full Screen Background */
             .stApp {{
                 background-image: url("data:image/png;base64,{encoded_string}");
                 background-attachment: fixed;
                 background-size: cover;
                 background-position: center;
             }}
-
             header {{background: rgba(0,0,0,0) !important;}}
-            
             [data-testid="stSidebar"] {{
                 background-color: rgba(0, 0, 0, 0.3) !important;
                 backdrop-filter: blur(10px);
             }}
-
-            /* EXACT HEADER STYLE FROM IMAGE */
             .styled-header {{
-                background-color: #262730; /* Solid dark charcoal */
+                background-color: #262730;
                 color: #ffffff !important;
                 padding: 40px 20px;
                 border-radius: 20px;
@@ -81,7 +75,6 @@ def set_ui_design(image_file):
                 margin: 0 auto 40px auto;
                 max-width: 700px;
             }}
-
             .corner-footer {{
                 position: fixed;
                 right: 20px;
@@ -95,15 +88,12 @@ def set_ui_design(image_file):
                 z-index: 9999;
                 box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             }}
-
-            /* White Content Cards */
             .st-emotion-cache-12w0qpk {{
                 background-color: rgba(255, 255, 255, 0.95) !important;
                 padding: 30px !important;
                 border-radius: 15px !important;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
             }}
-            
             h2, h3, p {{ color: #1E1E1E !important; }}
             </style>
             <div class="corner-footer">Created by: Sino Menghuy</div>
@@ -114,7 +104,7 @@ def set_ui_design(image_file):
 set_ui_design('BackImage.jpg')
 
 # =========================================================================
-# THE HEADER BOX
+# HEADER
 # =========================================================================
 st.markdown("""
 <div class="styled-header">
@@ -125,6 +115,9 @@ st.markdown("""
 # ==============================
 # 3. LOGIN SYSTEM
 # ==============================
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 
@@ -137,14 +130,16 @@ if not st.session_state.logged_in:
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
         if st.button("Login"):
-            c.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+            hashed = hash_password(password)
+            c.execute("SELECT * FROM users WHERE username=? AND password=?", (username, hashed))
             user = c.fetchone()
             if user:
                 st.session_state.logged_in = True
-                st.success("Login Successful!")
-                st.rerun()
+                st.success("✅ Login Successful!")
+                st.session_state.user = username
+                st.experimental_rerun()
             else:
-                st.error("Invalid Username or Password")
+                st.error("❌ Invalid Username or Password")
 
     # ---- REGISTER ----
     with register_tab:
@@ -153,29 +148,30 @@ if not st.session_state.logged_in:
         if st.button("Create Account"):
             if new_user and new_pass:
                 try:
-                    c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (new_user, new_pass))
+                    hashed_new = hash_password(new_pass)
+                    c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (new_user, hashed_new))
                     conn.commit()
-                    st.success("Account Created Successfully! You can now login.")
+                    st.success("✅ Account Created Successfully! You can now login.")
                 except:
-                    st.error("Username already exists.")
+                    st.error("❌ Username already exists.")
             else:
-                st.warning("Please fill all fields.")
-    st.stop()   # Stops system until login
+                st.warning("⚠️ Please fill all fields.")
+    st.stop()  # Stop everything until login
 
 # ==============================
-# 4. LOGOUT BUTTON
+# LOGOUT BUTTON
 # ==============================
 if st.sidebar.button("Logout"):
     st.session_state.logged_in = False
-    st.rerun()
+    st.experimental_rerun()
 
 # ==============================
-# 5. MENU SELECTION
+# MENU SELECTION
 # ==============================
 menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
 # ==============================
-# 6. VIEW STOCK
+# VIEW STOCK
 # ==============================
 if menu == "View Stock":
     st.subheader("📦 Current Inventory")
@@ -200,7 +196,7 @@ if menu == "View Stock":
         st.info("No items in stock.")
 
 # ==============================
-# 7. STOCK IN
+# STOCK IN
 # ==============================
 elif menu == "Stock In":
     st.subheader("📥 Add/Update Stock")
@@ -227,7 +223,7 @@ elif menu == "Stock In":
                 st.error("Product name is required.")
 
 # ==============================
-# 8. STOCK OUT
+# STOCK OUT
 # ==============================
 elif menu == "Stock Out":
     st.subheader("📤 Remove Stock")
@@ -253,14 +249,14 @@ elif menu == "Stock Out":
                 c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", (selected_prod, "OUT", qty_out, now))
                 conn.commit()
                 st.success(f"✅ Removed {qty_out} units of {selected_prod}")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error(f"Not enough stock! Current balance: {current_inv}")
     else:
         st.warning("No products available to remove.")
 
 # ==============================
-# 9. DAILY REPORTS
+# DAILY REPORTS
 # ==============================
 elif menu == "Daily Reports":
     st.subheader("🗓 Transaction Archive (2026-2100)")
@@ -301,3 +297,4 @@ elif menu == "Daily Reports":
             st.warning(f"No records for Day {start_day}-{end_day}.")
     else:
         st.write(f"No activity for {sel_month} {sel_year}.")
+
