@@ -7,273 +7,206 @@ from datetime import datetime
 from PIL import Image
 
 # ==============================
-# 1. DATABASE & DIRECTORY SETUP
+# 1. DATABASE SETUP (Multi-User)
 # ==============================
 conn = sqlite3.connect('stock.db', check_same_thread=False)
 c = conn.cursor()
 
+# Create tables if they don't exist
+c.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT)')
 c.execute('''CREATE TABLE IF NOT EXISTS stock 
              (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-              product_name TEXT UNIQUE, 
+              user_id INTEGER,
+              product_name TEXT, 
               quantity INTEGER, 
               image_path TEXT)''')
-
 c.execute('''CREATE TABLE IF NOT EXISTS transactions 
              (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+              user_id INTEGER,
               product_name TEXT, 
               type TEXT, 
               qty INTEGER, 
               date TEXT)''')
-
-try:
-    c.execute("ALTER TABLE stock ADD COLUMN image_path TEXT")
-except sqlite3.OperationalError:
-    pass 
-
 conn.commit()
 
 if not os.path.exists("images"):
     os.makedirs("images")
 
 # ==============================
-# 2. UI, STYLING & FULL BACKGROUND
+# 2. UI & STYLING
 # ==============================
 def set_ui_design(image_file):
     if os.path.exists(image_file):
         with open(image_file, "rb") as f:
             data = f.read()
         encoded_string = base64.b64encode(data).decode()
-
         st.markdown(f"""
             <style>
-
-            /* Full Screen Background */
             .stApp {{
                 background-image: url("data:image/png;base64,{encoded_string}");
                 background-attachment: fixed;
                 background-size: cover;
                 background-position: center;
             }}
-
-            header {{background: rgba(0,0,0,0) !important;}}
-
-            /* Sidebar Glass Effect */
-            [data-testid="stSidebar"] {{
-                background-color: rgba(0, 0, 0, 0.3) !important;
-                backdrop-filter: blur(10px);
-            }}
-
-            /* HEADER BOX */
-            .styled-header {{
-                background-color: #262730;
-                padding: 40px 20px;
-                border-radius: 20px;
-                text-align: center;
-                box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-                margin: 0 auto 40px auto;
-                max-width: 700px;
-            }}
-
-            .styled-header h1,
-            .styled-header p {{
-                color: #FFFFFF !important;
-            }}
-
-            /* Floating Footer */
-            .corner-footer {{
-                position: fixed;
-                right: 20px;
-                bottom: 20px;
-                background-color: #262730;
-                color: #ffffff !important;
-                padding: 10px 25px;
-                border-radius: 50px;
-                font-size: 14px;
-                font-weight: bold;
-                z-index: 9999;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            }}
-
-            /* White Content Cards */
-            .st-emotion-cache-12w0qpk {{
-                background-color: rgba(255, 255, 255, 0.95) !important;
-                padding: 30px !important;
-                border-radius: 15px !important;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
-            }}
-
-            /* Dark text ONLY inside white cards */
-            .st-emotion-cache-12w0qpk h2, 
-            .st-emotion-cache-12w0qpk h3, 
-            .st-emotion-cache-12w0qpk p {{
-                color: #1E1E1E !important;
-            }}
-
+            [data-testid="stSidebar"] {{ background-color: rgba(0, 0, 0, 0.4) !important; backdrop-filter: blur(10px); }}
+            .styled-header {{ background-color: #262730; padding: 30px; border-radius: 20px; text-align: center; margin-bottom: 30px; border: 1px solid #444; }}
+            .styled-header h1, .styled-header p {{ color: white !important; margin: 0; }}
+            .st-emotion-cache-12w0qpk {{ background-color: rgba(255, 255, 255, 0.95) !important; border-radius: 15px !important; padding: 25px !important; }}
             </style>
-
-            <div class="corner-footer">Created by: Sino Menghuy</div>
-
         """, unsafe_allow_html=True)
-    else:
-        st.sidebar.warning(f"Background image '{image_file}' not found.")
 
 set_ui_design('BackImage.jpg')
 
 # ==============================
-# HEADER SECTION
+# 3. LOGIN / SIGNUP LOGIC
 # ==============================
-st.markdown("""
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
+    st.session_state['user_id'] = None
+    st.session_state['username'] = ""
+
+def login_user(username, password):
+    c.execute('SELECT id FROM users WHERE username = ? AND password = ?', (username, password))
+    return c.fetchone()
+
+def signup_user(username, password):
+    try:
+        c.execute('INSERT INTO users (username, password) VALUES (?, ?)', (username, password))
+        conn.commit()
+        return True
+    except:
+        return False
+
+if not st.session_state['logged_in']:
+    st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Secure Access</h1><p>ZK7 Office Management System</p></div>', unsafe_allow_html=True)
+    
+    tab1, tab2 = st.tabs(["Login", "Create Account"])
+    
+    with tab1:
+        with st.form("login_form"):
+            user = st.text_input("Username")
+            pw = st.text_input("Password", type="password")
+            if st.form_submit_button("Login"):
+                result = login_user(user, pw)
+                if result:
+                    st.session_state['logged_in'] = True
+                    st.session_state['user_id'] = result[0]
+                    st.session_state['username'] = user
+                    st.rerun()
+                else:
+                    st.error("Invalid Username or Password")
+
+    with tab2:
+        with st.form("signup_form"):
+            new_user = st.text_input("New Username")
+            new_pw = st.text_input("New Password", type="password")
+            if st.form_submit_button("Sign Up"):
+                if signup_user(new_user, new_pw):
+                    st.success("Account created! You can now login.")
+                else:
+                    st.error("Username already exists.")
+    st.stop()
+
+# ==============================
+# 4. MAIN APP (ONLY FOR LOGGED IN)
+# ==============================
+uid = st.session_state['user_id']
+
+# Sidebar Header
+st.sidebar.title(f"👤 {st.session_state['username']}")
+if st.sidebar.button("Logout"):
+    st.session_state['logged_in'] = False
+    st.rerun()
+
+st.markdown(f"""
 <div class="styled-header">
     <h1>🌸 Sakura97 Stock Management</h1>
-    <p>Managed by: ZK7 Office</p>
-</div>
-""", unsafe_allow_html=True)
+    <p>User: {st.session_state['username']} | ZK7 Office</p>
+</div>""", unsafe_allow_html=True)
 
 menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
-# ==============================
-# VIEW STOCK
-# ==============================
+# --- VIEW STOCK ---
 if menu == "View Stock":
-    st.subheader("📦 Current Inventory")
-    df = pd.read_sql_query("SELECT product_name as 'Product', quantity as 'In Stock' FROM stock", conn)
-
+    st.subheader("📦 My Inventory")
+    df = pd.read_sql_query("SELECT product_name as 'Product', quantity as 'In Stock' FROM stock WHERE user_id = ?", conn, params=(uid,))
+    
     if not df.empty:
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("📊 Download Inventory (Excel/CSV)", data=csv, file_name="Sakura97_Inventory.csv", mime='text/csv')
-
         for index, row in df.iterrows():
             with st.container():
                 col1, col2 = st.columns([1,4])
-                img_p = f"images/{row['Product']}.png"
+                img_p = f"images/{uid}_{row['Product']}.png"
                 with col1:
-                    if os.path.exists(img_p):
-                        st.image(img_p, use_container_width=True)
-                    else:
-                        st.caption("No Image")
+                    if os.path.exists(img_p): st.image(img_p, use_container_width=True)
+                    else: st.caption("No Image")
                 with col2:
                     st.markdown(f"### {row['Product']}")
-                    st.write(f"**Quantity Available:** {row['In Stock']} units")
+                    st.write(f"**Quantity:** {row['In Stock']} units")
                     st.markdown("---")
     else:
-        st.info("No items in stock.")
+        st.info("Your inventory is empty.")
 
-# ==============================
-# STOCK IN
-# ==============================
+# --- STOCK IN ---
 elif menu == "Stock In":
-    st.subheader("📥 Add/Update Stock")
-
-    with st.form("stock_in_form"):
+    st.subheader("📥 Add Stock")
+    with st.form("stock_in"):
         name = st.text_input("Product Name").strip()
-        qty = st.number_input("Quantity to Add", min_value=1)
-        img_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
-        submitted = st.form_submit_button("Submit Stock In")
-
-        if submitted:
+        qty = st.number_input("Quantity", min_value=1)
+        img_file = st.file_uploader("Image", type=["jpg", "png"])
+        if st.form_submit_button("Submit"):
             if name:
-                img_path = f"images/{name}.png"
-                if img_file:
-                    Image.open(img_file).save(img_path)
-
-                try:
-                    c.execute("INSERT INTO stock (product_name, quantity, image_path) VALUES (?, ?, ?)", (name, qty, img_path))
-                except:
-                    c.execute("UPDATE stock SET quantity = quantity + ? WHERE product_name = ?", (qty, name))
-
-                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", (name, "IN", qty, now))
+                img_path = f"images/{uid}_{name}.png"
+                if img_file: Image.open(img_file).save(img_path)
+                
+                # Check if user already has this product
+                c.execute("SELECT id FROM stock WHERE user_id = ? AND product_name = ?", (uid, name))
+                exists = c.fetchone()
+                
+                if exists:
+                    c.execute("UPDATE stock SET quantity = quantity + ? WHERE id = ?", (qty, exists[0]))
+                else:
+                    c.execute("INSERT INTO stock (user_id, product_name, quantity, image_path) VALUES (?, ?, ?, ?)", (uid, name, qty, img_path))
+                
+                c.execute("INSERT INTO transactions (user_id, product_name, type, qty, date) VALUES (?, ?, 'IN', ?, ?)", 
+                          (uid, name, qty, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                 conn.commit()
-                st.success(f"✅ Recorded: {qty} units of {name} added.")
-            else:
-                st.error("Product name is required.")
+                st.success(f"Added {qty} to {name}")
+            else: st.error("Name required")
 
-# ==============================
-# STOCK OUT
-# ==============================
+# --- STOCK OUT ---
 elif menu == "Stock Out":
     st.subheader("📤 Remove Stock")
-
-    c.execute("SELECT product_name FROM stock")
-    products = [row[0] for row in c.fetchall()]
-
-    if products:
-        selected_prod = st.selectbox("Search Product", products)
-        qty_out = st.number_input("Quantity to Remove", min_value=1)
-
-        if st.button("Confirm Removal"):
-            c.execute("SELECT quantity FROM stock WHERE product_name = ?", (selected_prod,))
-            current_inv = c.fetchone()[0]
-
-            if qty_out <= current_inv:
-                new_inv = current_inv - qty_out
-
-                if new_inv == 0:
-                    c.execute("DELETE FROM stock WHERE product_name = ?", (selected_prod,))
-                else:
-                    c.execute("UPDATE stock SET quantity = ? WHERE product_name = ?", (new_inv, selected_prod))
-
-                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", (selected_prod, "OUT", qty_out, now))
+    c.execute("SELECT product_name FROM stock WHERE user_id = ?", (uid,))
+    prods = [r[0] for r in c.fetchall()]
+    if prods:
+        sel = st.selectbox("Product", prods)
+        q_out = st.number_input("Qty to Remove", min_value=1)
+        if st.button("Confirm"):
+            c.execute("SELECT quantity FROM stock WHERE user_id = ? AND product_name = ?", (uid, sel))
+            curr = c.fetchone()[0]
+            if q_out <= curr:
+                c.execute("UPDATE stock SET quantity = ? WHERE user_id = ? AND product_name = ?", (curr - q_out, uid, sel))
+                c.execute("INSERT INTO transactions (user_id, product_name, type, qty, date) VALUES (?, ?, 'OUT', ?, ?)", 
+                          (uid, sel, q_out, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                 conn.commit()
-
-                st.success(f"✅ Removed {qty_out} units of {selected_prod}")
+                st.success("Updated!")
                 st.rerun()
-            else:
-                st.error(f"Not enough stock! Current balance: {current_inv}")
-    else:
-        st.warning("No products available to remove.")
+            else: st.error("Not enough stock!")
+    else: st.warning("No products found.")
 
-# ==============================
-# DAILY REPORTS
-# ==============================
+# --- REPORTS ---
 elif menu == "Daily Reports":
-    st.subheader("🗓 Transaction Archive (2026-2100)")
-
-    col_y, col_m = st.columns(2)
-    with col_y:
-        sel_year = st.selectbox("Year", list(range(2026, 2101)), index=0)
-    with col_m:
-        months = ["January", "February", "March", "April", "May", "June",
-                  "July", "August", "September", "October", "November", "December"]
-        sel_month = st.selectbox("Month", months, index=datetime.now().month - 1)
-
-    st.write("🔍 Filter by Day Range:")
-    col_d1, col_d2 = st.columns(2)
-    with col_d1:
-        start_day = st.number_input("From Day", min_value=1, max_value=31, value=1)
-    with col_d2:
-        end_day = st.number_input("To Day", min_value=1, max_value=31, value=31)
-
-    month_idx = f"{months.index(sel_month) + 1:02d}"
-    search_str = f"{sel_year}-{month_idx}%"
-
-    report_df = pd.read_sql_query(
-        "SELECT date, product_name as 'Product', type as 'Action', qty as 'Quantity' "
-        "FROM transactions WHERE date LIKE ? ORDER BY date DESC",
-        conn, params=(search_str,)
-    )
-
-    if not report_df.empty:
-        report_df['Date/Time'] = pd.to_datetime(report_df['date'])
-        report_df['Day'] = report_df['Date/Time'].dt.day
-
-        filtered_df = report_df[(report_df['Day'] >= start_day) & (report_df['Day'] <= end_day)]
-        display_df = filtered_df[['Date/Time', 'Day', 'Product', 'Action', 'Quantity']]
-
-        if not display_df.empty:
-            st.dataframe(display_df, use_container_width=True)
-
-            total_in = display_df[display_df['Action'] == 'IN']['Quantity'].sum()
-            total_out = display_df[display_df['Action'] == 'OUT']['Quantity'].sum()
-
-            st.info(f"📊 Summary: {total_in} units In | {total_out} units Out")
-
-            csv_report = display_df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Report",
-                               data=csv_report,
-                               file_name=f"Sakura97_{sel_month}_{sel_year}.csv")
-        else:
-            st.warning(f"No records for Day {start_day}-{end_day}.")
+    st.subheader("🗓 My Archive (2026-2100)")
+    y = st.selectbox("Year", list(range(2026, 2101)))
+    m_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    m = st.selectbox("Month", m_names, index=datetime.now().month-1)
+    
+    m_idx = f"{m_names.index(m) + 1:02d}"
+    search = f"{y}-{m_idx}%"
+    
+    df_rep = pd.read_sql_query("SELECT date, product_name, type, qty FROM transactions WHERE user_id = ? AND date LIKE ? ORDER BY date DESC", 
+                               conn, params=(uid, search))
+    if not df_rep.empty:
+        st.dataframe(df_rep, use_container_width=True)
     else:
-        st.write(f"No activity for {sel_month} {sel_year}.")
+        st.write("No data for this month.")
