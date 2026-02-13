@@ -117,7 +117,6 @@ if not st.session_state['logged_in']:
     
     auth_mode = st.sidebar.selectbox("Access Mode", ["Login", "Sign Up"])
     
-    # -------- SIGN UP --------
     if auth_mode == "Sign Up":
         st.subheader("Create New Account")
         new_user = st.text_input("New Username").strip()
@@ -129,8 +128,6 @@ if not st.session_state['logged_in']:
                     c.execute('INSERT INTO users(username, password) VALUES (?,?)', 
                               (new_user, make_hashes(new_pass)))
                     conn.commit()
-                    
-                    # Auto-login after signup
                     st.session_state['logged_in'] = True
                     st.session_state['user'] = new_user
                     st.success(f"Account created and logged in as '{new_user}'!")
@@ -140,7 +137,6 @@ if not st.session_state['logged_in']:
             else:
                 st.warning("Please fill all fields.")
     
-    # -------- LOGIN --------
     elif auth_mode == "Login":
         st.subheader("Login to Sakura97")
         user = st.text_input("Username").strip()
@@ -259,7 +255,7 @@ else:
         st.subheader("🗓 Transaction Archive")
         col_y, col_m = st.columns(2)
         with col_y:
-            sel_year = st.selectbox("Year", list(range(2025, 2101)), index=1) # 2026 default
+            sel_year = st.selectbox("Year", list(range(2025, 2101)), index=1)
         with col_m:
             months = ["January", "February", "March", "April", "May", "June", "July", 
                       "August", "September", "October", "November", "December"]
@@ -274,3 +270,6 @@ else:
         )
         
         if not report_df.empty:
+            st.dataframe(report_df, use_container_width=True)
+        else:
+            st.write(f"No activity for {sel_month} {sel_year}.")
