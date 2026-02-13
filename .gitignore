@@ -1,9 +1,0 @@
-# Ignore local secrets
-.streamlit/secrets.toml
-service_account.json
-
-# Ignore local images
-images/
-
-# Ignore python cache
-__pycache__/
