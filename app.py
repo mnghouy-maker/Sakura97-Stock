@@ -46,7 +46,7 @@ def check_hashes(password, hashed_text):
     return make_hashes(password) == hashed_text
 
 # ==============================
-# 3. UI DESIGN
+# 3. UI DESIGN (UPDATED FOR WHITE TEXT)
 # ==============================
 def set_ui_design(image_file):
     if os.path.exists(image_file):
@@ -55,19 +55,31 @@ def set_ui_design(image_file):
         encoded_string = base64.b64encode(data).decode()
         st.markdown(f"""
             <style>
+            /* Main App Background */
             .stApp {{
                 background-image: url("data:image/png;base64,{encoded_string}");
                 background-attachment: fixed;
                 background-size: cover;
                 background-position: center;
             }}
-            header {{background: rgba(0,0,0,0) !important;}}
+
+            /* GLOBAL TEXT COLOR: WHITE */
+            h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, .stText, .stMetric, [data-testid="stHeader"] {{
+                color: white !important;
+            }}
+
+            /* Sidebar text and background */
             [data-testid="stSidebar"] {{
-                background-color: rgba(0, 0, 0, 0.4) !important;
+                background-color: rgba(0, 0, 0, 0.5) !important;
                 backdrop-filter: blur(15px);
             }}
+            [data-testid="stSidebar"] * {{
+                color: white !important;
+            }}
+
+            /* Header Box */
             .styled-header {{
-                background-color: #262730;
+                background-color: rgba(38, 39, 48, 0.8);
                 color: #ffffff !important;
                 padding: 40px 20px;
                 border-radius: 20px;
@@ -76,6 +88,8 @@ def set_ui_design(image_file):
                 margin: 0 auto 40px auto;
                 max-width: 700px;
             }}
+
+            /* Footer */
             .corner-footer {{
                 position: fixed;
                 right: 20px;
@@ -88,18 +102,27 @@ def set_ui_design(image_file):
                 font-weight: bold;
                 z-index: 9999;
             }}
+
+            /* Form Containers (Changed to dark/transparent for white text contrast) */
             [data-testid="stVerticalBlock"] > div:has(div.stForm) {{
-                background-color: rgba(255, 255, 255, 0.9);
+                background-color: rgba(0, 0, 0, 0.4);
                 padding: 20px;
                 border-radius: 15px;
+                border: 1px solid rgba(255, 255, 255, 0.2);
             }}
-            .stMetric {{
-                background-color: rgba(255, 255, 255, 0.8);
-                padding: 15px;
-                border-radius: 10px;
-                text-align: center;
+
+            /* Metric styling */
+            [data-testid="stMetricLabel"], [data-testid="stMetricValue"] {{
+                color: white !important;
             }}
-            h1, h2, h3, p {{ color: #1E1E1E; }}
+
+            header {{background: rgba(0,0,0,0) !important;}}
+            
+            /* Input Box Fixes */
+            .stTextInput input, .stNumberInput input {{
+                color: white !important;
+                background-color: rgba(255,255,255,0.1) !important;
+            }}
             </style>
             <div class="corner-footer">Created by: Sino Menghuy</div>
         """, unsafe_allow_html=True)
@@ -230,11 +253,10 @@ else:
                     st.rerun()
                 else: st.error(f"Not enough stock! Balance: {current_inv}")
 
-    # -------- DAILY REPORTS (Custom Date Range) --------
+    # -------- DAILY REPORTS --------
     elif menu == "Daily Reports":
         st.subheader("🗓 Transaction Archive & Custom Reports")
         
-        # 1. Date Range Selection
         col_start, col_end = st.columns(2)
         with col_start:
             start_date = st.date_input("Start Date", datetime.now().replace(day=1))
@@ -244,7 +266,6 @@ else:
         if start_date > end_date:
             st.error("Error: Start Date must be before End Date.")
         else:
-            # 2. Fetch data based on range
             query = """
                 SELECT date, product_name as 'Product', type as 'Action', qty as 'Quantity' 
                 FROM transactions 
@@ -257,11 +278,9 @@ else:
                 st.info(f"Report for: {start_date} to {end_date}")
                 st.dataframe(report_df, use_container_width=True)
                 
-                # --- EXPORTS ---
                 st.markdown("### 📥 Download Reports")
                 col_ex1, col_ex2 = st.columns(2)
 
-                # Excel
                 output_excel = BytesIO()
                 with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
                     report_df.to_excel(writer, index=False, sheet_name='Summary')
@@ -272,7 +291,6 @@ else:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
 
-                # PDF
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", 'B', 16)
@@ -294,7 +312,6 @@ else:
                     mime="application/pdf"
                 )
 
-                # 3. Summary Metrics
                 st.markdown("---")
                 st.subheader("📊 Period Totals")
                 m_col1, m_col2 = st.columns(2)
