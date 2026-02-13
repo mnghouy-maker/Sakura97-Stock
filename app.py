@@ -11,8 +11,9 @@ from PIL import Image
 # ==============================
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def get_data(worksheet):
-    return conn.read(worksheet=worksheet, ttl="0s")
+def get_data(worksheet_name):
+    # This fetches live data from your Sakura97-Stock spreadsheet
+    return conn.read(worksheet=worksheet_name, ttl="0s")
 
 # ==============================
 # 2. UI & STYLING
@@ -30,13 +31,13 @@ def set_ui_design(image_file):
                 background-size: cover;
                 background-position: center;
             }}
-            [data-testid="stSidebar"] {{ background-color: rgba(0, 0, 0, 0.4) !important; backdrop-filter: blur(10px); }}
+            [data-testid="stSidebar"] {{ background-color: rgba(0, 0, 0, 0.6) !important; backdrop-filter: blur(10px); }}
             .styled-header {{ 
                 background-color: #262730; 
                 padding: 30px; border-radius: 20px; text-align: center; margin-bottom: 30px; 
             }}
             .styled-header h1, .styled-header p {{ color: white !important; margin: 0; }}
-            .st-emotion-cache-12w0qpk {{ background-color: rgba(255, 255, 255, 0.95) !important; border-radius: 15px !important; padding: 25px !important; }}
+            .st-emotion-cache-12w0qpk {{ background-color: rgba(255, 255, 255, 0.9) !important; border-radius: 15px !important; padding: 25px !important; }}
             </style>
         """, unsafe_allow_html=True)
 
@@ -65,28 +66,26 @@ if not st.session_state['logged_in']:
                         st.session_state.update({'logged_in': True, 'username': u})
                         st.rerun()
                     else: st.error("Wrong Username/Password")
-                except:
-                    st.error("Connection Error: Please check if your Google Sheet is shared as 'Anyone with the link can edit'.")
+                except Exception:
+                    st.error("Connection Error: Please check your Google Sheet tab names.")
 
     with tab2:
         with st.form("signup"):
             nu = st.text_input("New Username")
             np = st.text_input("New Password", type="password")
             if st.form_submit_button("Sign Up"):
-                try:
-                    users_df = get_data("users")
+                users_df = get_data("users")
+                if nu and np:
                     if nu not in users_df['username'].values:
                         new_row = pd.DataFrame([{"username": nu, "password": np}])
-                        updated_users = pd.concat([users_df, new_row], ignore_index=True)
-                        conn.update(worksheet="users", data=updated_users)
+                        updated_df = pd.concat([users_df, new_row], ignore_index=True)
+                        conn.update(worksheet="users", data=updated_df)
                         st.success("Account created! You can login now.")
                     else: st.error("Username taken")
-                except:
-                    st.error("Connection Error: Ensure your Google Sheet is set to 'Editor' access.")
     st.stop()
 
 # ==============================
-# 4. MAIN APP
+# 4. MAIN APP LOGIC
 # ==============================
 curr_user = st.session_state['username']
 st.sidebar.title(f"👤 {curr_user}")
@@ -114,7 +113,7 @@ if menu == "View Stock":
                     st.subheader(row['product_name'])
                     st.write(f"Quantity: {row['quantity']} units")
                     st.markdown("---")
-    else: st.info("No stock found.")
+    else: st.info("No stock found in cloud.")
 
 # --- STOCK IN ---
 elif menu == "Stock In":
@@ -123,7 +122,7 @@ elif menu == "Stock In":
         name = st.text_input("Product Name").strip()
         qty = st.number_input("Quantity", min_value=1)
         img_file = st.file_uploader("Image", type=["jpg", "png"])
-        if st.form_submit_button("Submit"):
+        if st.form_submit_button("Update Cloud"):
             if name:
                 stock_df = get_data("stock")
                 idx = stock_df[(stock_df['user_id'] == curr_user) & (stock_df['product_name'] == name)].index
@@ -136,11 +135,12 @@ elif menu == "Stock In":
                 if img_file: Image.open(img_file).save(f"images/{curr_user}_{name}.png")
                 conn.update(worksheet="stock", data=stock_df)
                 
+                # Update Transactions
                 trans_df = get_data("transactions")
-                new_trans = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": name, "type": "IN", "qty": qty, "user_id": curr_user}])
-                conn.update(worksheet="transactions", data=pd.concat([trans_df, new_trans], ignore_index=True))
-                st.success("Successfully Updated!")
-            else: st.error("Name required")
+                new_t = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": name, "type": "IN", "qty": qty, "user_id": curr_user}])
+                conn.update(worksheet="transactions", data=pd.concat([trans_df, new_t], ignore_index=True))
+                st.success("Successfully Saved to Google Sheets!")
+            else: st.error("Product Name is required")
 
 # --- STOCK OUT ---
 elif menu == "Stock Out":
@@ -148,37 +148,36 @@ elif menu == "Stock Out":
     stock_df = get_data("stock")
     my_items = stock_df[stock_df['user_id'] == curr_user]['product_name'].tolist()
     if my_items:
-        sel = st.selectbox("Product", my_items)
-        q_out = st.number_input("Qty", min_value=1)
-        if st.button("Confirm"):
+        sel = st.selectbox("Select Product", my_items)
+        q_out = st.number_input("Quantity Out", min_value=1)
+        if st.button("Confirm Removal"):
             idx = stock_df[(stock_df['user_id'] == curr_user) & (stock_df['product_name'] == sel)].index[0]
             if q_out <= stock_df.at[idx, 'quantity']:
                 stock_df.at[idx, 'quantity'] -= q_out
                 conn.update(worksheet="stock", data=stock_df)
+                
                 trans_df = get_data("transactions")
                 new_t = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": sel, "type": "OUT", "qty": q_out, "user_id": curr_user}])
                 conn.update(worksheet="transactions", data=pd.concat([trans_df, new_t], ignore_index=True))
-                st.success("Updated!"); st.rerun()
-            else: st.error("Not enough stock!")
+                st.success("Cloud Updated!"); st.rerun()
+            else: st.error("Not enough stock available!")
 
 # --- DAILY REPORTS ---
 elif menu == "Daily Reports":
-    st.subheader("🗓 My Archive")
-    y = st.selectbox("Year", list(range(2026, 2101)))
-    m_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-    m = st.selectbox("Month", m_names, index=datetime.now().month-1)
-    s_day = st.number_input("From Day", 1, 31, 1)
-    e_day = st.number_input("To Day", 1, 31, 31)
+    st.subheader("🗓 Transaction Archive")
     trans_df = get_data("transactions")
     if not trans_df.empty:
-        trans_df['Date/Time'] = pd.to_datetime(trans_df['date'])
+        trans_df['date_dt'] = pd.to_datetime(trans_df['date'])
+        
+        y = st.selectbox("Year", [2026, 2025])
+        m_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+        m = st.selectbox("Month", m_names, index=datetime.now().month-1)
         m_idx = m_names.index(m) + 1
+        
         report = trans_df[(trans_df['user_id'] == curr_user) & 
-                          (trans_df['Date/Time'].dt.year == y) & 
-                          (trans_df['Date/Time'].dt.month == m_idx) &
-                          (trans_df['Date/Time'].dt.day >= s_day) &
-                          (trans_df['Date/Time'].dt.day <= e_day)]
+                          (trans_df['date_dt'].dt.year == y) & 
+                          (trans_df['date_dt'].dt.month == m_idx)]
+        
         if not report.empty:
             st.dataframe(report[['date', 'product_name', 'type', 'qty']], use_container_width=True)
-        else: st.write("No data for this range.")
-    else: st.write("No transactions yet.")
+        else: st.info("No records for this period.")
