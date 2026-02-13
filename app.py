@@ -13,18 +13,12 @@ from PIL import Image
 conn = sqlite3.connect('stock.db', check_same_thread=False)
 c = conn.cursor()
 
-c.execute('''CREATE TABLE IF NOT EXISTS users 
-             (username TEXT PRIMARY KEY, password TEXT)''')
-
+# Create tables if they don't exist
+c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
 c.execute('''CREATE TABLE IF NOT EXISTS stock 
-             (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-             product_name TEXT UNIQUE, 
-             quantity INTEGER, 
-             image_path TEXT)''')
-
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, product_name TEXT UNIQUE, quantity INTEGER, image_path TEXT)''')
 c.execute('''CREATE TABLE IF NOT EXISTS transactions 
-             (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-             product_name TEXT, type TEXT, qty INTEGER, date TEXT)''')
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, product_name TEXT, type TEXT, qty INTEGER, date TEXT)''')
 conn.commit()
 
 def make_hashes(password):
@@ -35,8 +29,7 @@ def create_user(username, password):
         c.execute('INSERT INTO users(username,password) VALUES (?,?)', (username, make_hashes(password)))
         conn.commit()
         return True
-    except:
-        return False
+    except: return False
 
 def login_user(username, password):
     c.execute('SELECT * FROM users WHERE username = ? AND password = ?', (username, make_hashes(password)))
@@ -46,7 +39,7 @@ if not os.path.exists("images"):
     os.makedirs("images")
 
 # ==============================
-# 2. UI & FULL BACKGROUND STYLING
+# 2. ADVANCED UI & SIDEBAR STYLING
 # ==============================
 def set_ui_design(image_file):
     if os.path.exists(image_file):
@@ -55,176 +48,193 @@ def set_ui_design(image_file):
         encoded_string = base64.b64encode(data).decode()
         st.markdown(f"""
             <style>
-            /* Full Background Image */
             .stApp {{
                 background-image: url("data:image/png;base64,{encoded_string}");
                 background-attachment: fixed;
                 background-size: cover;
                 background-position: center;
             }}
-
-            /* Glass effect for Sidebar */
-            [data-testid="stSidebar"] {{ 
-                background-color: rgba(0, 0, 0, 0.6) !important; 
-                backdrop-filter: blur(15px); 
+            
+            /* High-End Sidebar Styling */
+            [data-testid="stSidebar"] {{
+                background-color: rgba(0, 0, 0, 0.7) !important;
+                backdrop-filter: blur(15px);
+                border-right: 1px solid rgba(255, 255, 255, 0.1);
             }}
             
-            /* Sidebar text colors */
-            [data-testid="stSidebar"] * {{
-                color: white !important;
+            /* Glass-morphism Cards */
+            .glass-card {{
+                background: rgba(255, 255, 255, 0.95);
+                padding: 25px;
+                border-radius: 15px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+                color: #1E1E1E !important;
+                margin-bottom: 20px;
+                border: 1px solid rgba(255, 255, 255, 0.2);
             }}
 
-            /* Header Box Styling */
-            .styled-header {{ 
-                background-color: rgba(38, 39, 48, 0.85); 
-                padding: 30px; 
-                border-radius: 20px; 
-                text-align: center; 
-                color: white; 
+            .styled-header {{
+                background: rgba(38, 39, 48, 0.9);
+                padding: 40px;
+                border-radius: 20px;
+                text-align: center;
+                color: white !important;
                 margin-bottom: 30px;
-                box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
-                backdrop-filter: blur(4px);
+                box-shadow: 0 10px 40px rgba(0,0,0,0.5);
                 border: 1px solid rgba(255, 255, 255, 0.1);
             }}
 
-            .corner-footer {{
+            /* Bottom Left Footer */
+            .custom-footer {{
                 position: fixed;
                 left: 20px;
                 bottom: 20px;
-                background-color: #262730;
-                color: white;
+                background: rgba(0, 0, 0, 0.8);
+                color: #00ffcc !important;
                 padding: 10px 20px;
-                border-radius: 50px;
-                z-index: 9999;
-                font-weight: bold;
+                border-radius: 8px;
+                font-family: 'Courier New', monospace;
+                font-size: 13px;
+                border: 1px solid #00ffcc;
+                z-index: 1000;
             }}
 
-            /* Text Visibility Classes */
-            .black-text {{ color: black !important; font-weight: bold; }}
-            .white-text {{ color: white !important; }}
-
-            /* Form / Card Styling */
-            .stForm {{
-                background-color: rgba(255, 255, 255, 0.9) !important;
-                padding: 25px !important;
-                border-radius: 15px !important;
-            }}
+            h1, h2, h3, p {{ color: white !important; }}
+            .black-text {{ color: #000000 !important; }}
             </style>
-            <div class="corner-footer">Created by: Sino Menghuy</div>
+            <div class="custom-footer">CREATED BY: SINO MENGHUY</div>
         """, unsafe_allow_html=True)
-    else:
-        st.error(f"Error: '{image_file}' not found. Please upload your building image and rename it to 'BackImage.jpg'.")
 
 set_ui_design('BackImage.jpg')
 
 # ==============================
-# 3. AUTHENTICATION LOGIC
+# 3. SESSION & AUTH
 # ==============================
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
-st.sidebar.title("🔐 Access Control")
-auth_mode = st.sidebar.selectbox("Action", ["Login", "Sign Up"])
-
 if not st.session_state['logged_in']:
-    st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Stock System</h1><p>Welcome to SK97 Smart Management</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Stock System</h1><p>Secure Portal for ZK7 Office</p></div>', unsafe_allow_html=True)
+    auth_mode = st.sidebar.radio("Access Control", ["Login", "Sign Up"])
     
-    # Login Box Styling
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        with st.form("auth_form"):
-            if auth_mode == "Sign Up":
-                st.markdown('<h2 class="black-text">Create Account</h2>', unsafe_allow_html=True)
-                new_user = st.text_input("Username")
-                new_pass = st.text_input("Password", type='password')
-                if st.form_submit_button("Register"):
-                    if create_user(new_user, new_pass):
-                        st.success("Account created! Now select Login in the sidebar.")
-                    else: st.error("Username already exists.")
-            else:
-                st.markdown('<h2 class="black-text">User Login</h2>', unsafe_allow_html=True)
-                user = st.text_input("Username")
-                password = st.text_input("Password", type='password')
-                if st.form_submit_button("Login"):
-                    if login_user(user, password):
-                        st.session_state['logged_in'] = True
-                        st.session_state['user'] = user
-                        st.rerun()
-                    else: st.error("Invalid Username or Password")
+    with st.container():
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        if auth_mode == "Sign Up":
+            user_new = st.text_input("New Username")
+            pass_new = st.text_input("New Password", type='password')
+            if st.button("Register Account"):
+                if create_user(user_new, pass_new): st.success("Success! Please Login.")
+                else: st.error("User already exists.")
+        else:
+            user_log = st.text_input("Username")
+            pass_log = st.text_input("Password", type='password')
+            if st.button("Sign In"):
+                if login_user(user_log, pass_log):
+                    st.session_state['logged_in'] = True
+                    st.session_state['user'] = user_log
+                    st.rerun()
+                else: st.error("Access Denied.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # ==============================
-# 4. MAIN APP CONTENT
+# 4. MAIN SYSTEM
 # ==============================
 else:
-    st.sidebar.success(f"User: {st.session_state['user']}")
-    if st.sidebar.button("Logout"):
+    st.sidebar.markdown(f"### 👤 {st.session_state['user']}")
+    if st.sidebar.button("🔓 Logout"):
         st.session_state['logged_in'] = False
         st.rerun()
 
-    st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Stock Management</h1><p>Managed by: ZK7 Office</p></div>', unsafe_allow_html=True)
-    
-    menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
+    menu = st.sidebar.selectbox("Navigation", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
+    st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Management</h1></div>', unsafe_allow_html=True)
 
-    if menu == "View Stock":
-        st.markdown('<h3 class="black-text" style="background:white; padding:10px; border-radius:10px;">📦 Current Inventory</h3>', unsafe_allow_html=True)
-        df = pd.read_sql_query("SELECT product_name as 'Product', quantity as 'In Stock' FROM stock", conn)
-        if not df.empty:
-            for index, row in df.iterrows():
-                with st.container():
-                    # Content inside white card for visibility
-                    st.markdown(f"""
-                    <div style="background:white; padding:20px; border-radius:10px; margin-bottom:10px; color:black;">
-                        <h4>{row['Product']}</h4>
-                        <p>Quantity: {row['In Stock']} units</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+    # --- DAILY REPORTS (2026 - 2100) ---
+    if menu == "Daily Reports":
+        st.markdown('### 🗓 Transaction Archive (2026-2100)')
+        
+        with st.expander("🔍 Filter Records", expanded=True):
+            col_y, col_m = st.columns(2)
+            with col_y:
+                sel_year = st.selectbox("Select Year", list(range(2026, 2101)))
+            with col_m:
+                months = ["January", "February", "March", "April", "May", "June", 
+                          "July", "August", "September", "October", "November", "December"]
+                sel_month = st.selectbox("Select Month", months, index=datetime.now().month - 1)
+            
+            st.write("Filter by Day Range:")
+            d_start, d_end = st.slider("Days of Month", 1, 31, (1, 31))
+
+        # Query Database
+        month_idx = f"{months.index(sel_month) + 1:02d}"
+        search_pattern = f"{sel_year}-{month_idx}%"
+        
+        report_df = pd.read_sql_query(
+            "SELECT date, product_name as 'Product', type as 'Action', qty as 'Quantity' FROM transactions WHERE date LIKE ? ORDER BY date DESC",
+            conn, params=(search_pattern,)
+        )
+
+        if not report_df.empty:
+            report_df['Date/Time'] = pd.to_datetime(report_df['date'])
+            report_df['Day'] = report_df['Date/Time'].dt.day
+            
+            # Filter by specific days
+            final_df = report_df[(report_df['Day'] >= d_start) & (report_df['Day'] <= d_end)]
+            
+            if not final_df.empty:
+                st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+                st.dataframe(final_df[['Date/Time', 'Product', 'Action', 'Quantity']], use_container_width=True)
+                
+                # Totals
+                tin = final_df[final_df['Action']=='IN']['Quantity'].sum()
+                tout = final_df[final_df['Action']=='OUT']['Quantity'].sum()
+                st.markdown(f"<p class='black-text'><b>Total In:</b> {tin} | <b>Total Out:</b> {tout}</p>", unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.warning(f"No data for days {d_start} to {d_end}.")
         else:
-            st.info("No items in stock.")
+            st.info(f"No transactions found for {sel_month} {sel_year}.")
+
+    # --- STOCK MANAGEMENT ---
+    elif menu == "View Stock":
+        df = pd.read_sql_query("SELECT product_name as 'Product', quantity as 'Units' FROM stock", conn)
+        if not df.empty:
+            for _, row in df.iterrows():
+                st.markdown(f"""<div class="glass-card">
+                    <h3 class="black-text">{row['Product']}</h3>
+                    <p class="black-text"><b>Current Stock:</b> {row['Units']} units</p>
+                </div>""", unsafe_allow_html=True)
+        else: st.info("Inventory is empty.")
 
     elif menu == "Stock In":
-        st.markdown('<h3 class="black-text" style="background:white; padding:10px; border-radius:10px;">📥 Stock Entry</h3>', unsafe_allow_html=True)
-        with st.form("stock_in"):
-            name = st.text_input("Product Name").strip()
-            qty = st.number_input("Quantity", min_value=1)
-            img_file = st.file_uploader("Upload Product Image", type=["jpg", "png"])
-            if st.form_submit_button("Submit Stock"):
-                if name:
-                    img_path = f"images/{name}.png"
-                    if img_file: Image.open(img_file).save(img_path)
-                    try:
-                        c.execute("INSERT INTO stock (product_name, quantity, image_path) VALUES (?, ?, ?)", (name, qty, img_path))
-                    except:
-                        c.execute("UPDATE stock SET quantity = quantity + ? WHERE product_name = ?", (qty, name))
-                    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", (name, "IN", qty, now))
-                    conn.commit()
-                    st.success(f"Recorded: {qty} units of {name}")
-                else: st.error("Name is required.")
+        with st.form("in_form"):
+            st.markdown('<h3 class="black-text">Add Stock</h3>', unsafe_allow_html=True)
+            p_name = st.text_input("Product Name")
+            p_qty = st.number_input("Quantity", min_value=1)
+            if st.form_submit_button("Submit"):
+                try:
+                    c.execute("INSERT INTO stock (product_name, quantity) VALUES (?, ?)", (p_name, p_qty))
+                except:
+                    c.execute("UPDATE stock SET quantity = quantity + ? WHERE product_name = ?", (p_qty, p_name))
+                c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", 
+                          (p_name, "IN", p_qty, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                conn.commit()
+                st.success("Stock Added")
 
     elif menu == "Stock Out":
-        st.markdown('<h3 class="black-text" style="background:white; padding:10px; border-radius:10px;">📤 Remove Stock</h3>', unsafe_allow_html=True)
         c.execute("SELECT product_name FROM stock")
-        products = [row[0] for row in c.fetchall()]
-        if products:
-            with st.form("stock_out"):
-                selected_prod = st.selectbox("Select Product", products)
-                qty_out = st.number_input("Quantity to Remove", min_value=1)
-                if st.form_submit_button("Confirm Removal"):
-                    c.execute("SELECT quantity FROM stock WHERE product_name = ?", (selected_prod,))
-                    current = c.fetchone()[0]
-                    if qty_out <= current:
-                        new_qty = current - qty_out
-                        if new_qty == 0: c.execute("DELETE FROM stock WHERE product_name = ?", (selected_prod,))
-                        else: c.execute("UPDATE stock SET quantity = ? WHERE product_name = ?", (new_qty, selected_prod))
-                        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", (selected_prod, "OUT", qty_out, now))
+        prods = [r[0] for r in c.fetchall()]
+        if prods:
+            with st.form("out_form"):
+                p_sel = st.selectbox("Product", prods)
+                p_out = st.number_input("Quantity to Remove", min_value=1)
+                if st.form_submit_button("Confirm"):
+                    c.execute("SELECT quantity FROM stock WHERE product_name=?", (p_sel,))
+                    curr = c.fetchone()[0]
+                    if p_out <= curr:
+                        c.execute("UPDATE stock SET quantity = quantity - ? WHERE product_name = ?", (p_out, p_sel))
+                        c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", 
+                                  (p_sel, "OUT", p_out, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                         conn.commit()
-                        st.success("Stock updated successfully.")
+                        st.success("Stock Removed")
                         st.rerun()
-                    else: st.error("Insufficient stock!")
-        else: st.warning("Inventory is empty.")
-
-    elif menu == "Daily Reports":
-        st.markdown('<h3 class="black-text" style="background:white; padding:10px; border-radius:10px;">🗓 Transaction History</h3>', unsafe_allow_html=True)
-        st.info("Authorized area: Transaction logs are secured.")
-        # Filter logic can go here...
+                    else: st.error("Insufficient Stock")
