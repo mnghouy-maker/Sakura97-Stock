@@ -7,29 +7,24 @@ from datetime import datetime
 from PIL import Image
 
 # ==============================
-# 1. STABLE GOOGLE SHEETS CONNECTION
+# 1. STABLE CONNECTION
 # ==============================
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_data(worksheet_name):
     try:
-        # Changed ttl to 1 to fix the 'HTTP Error 400' while keeping data fresh
-        df = conn.read(worksheet=worksheet_name, ttl=1)
+        # Standard reading without aggressive caching to ensure stability
+        df = conn.read(worksheet=worksheet_name)
         if df is None or df.empty:
             if worksheet_name == "users": return pd.DataFrame(columns=["username", "password"])
-            if worksheet_name == "stock": return pd.DataFrame(columns=["product_name", "quantity", "user_id"])
-            if worksheet_name == "transactions": return pd.DataFrame(columns=["date", "product_name", "type", "qty", "user_id"])
-        return df
-    except Exception as e:
-        # If the 1s cache still fails, we use a standard 10s backup
-        try:
-            return conn.read(worksheet=worksheet_name, ttl=10)
-        except:
-            st.error(f"Cloud Connection Error: Please refresh the page.")
             return pd.DataFrame()
+        return df
+    except Exception:
+        st.error("Cloud Connection Lost. Please refresh your browser.")
+        return pd.DataFrame()
 
 # ==============================
-# 2. UI & STYLING (ZK7 Office)
+# 2. UI & DESIGN
 # ==============================
 def set_ui_design(image_file):
     if os.path.exists(image_file):
@@ -58,51 +53,38 @@ set_ui_design('BackImage.jpg')
 if not os.path.exists("images"): os.makedirs("images")
 
 # ==============================
-# 3. SECURE LOGIN SYSTEM
+# 3. LOGIN SYSTEM
 # ==============================
 if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'username': ""})
 
 if not st.session_state['logged_in']:
     st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Secure Access</h1><p>ZK7 Office Cloud</p></div>', unsafe_allow_html=True)
-    tab1, tab2 = st.tabs(["Login", "Create Account"])
     
-    with tab1:
-        with st.form("login"):
-            u_input = st.text_input("Username").strip()
-            p_input = st.text_input("Password", type="password").strip()
-            
-            if st.form_submit_button("Login"):
-                df = get_data("users")
-                if not df.empty:
-                    df['username'] = df['username'].astype(str).str.strip()
-                    df['password'] = df['password'].astype(str).str.strip()
-                    
-                    match = df[(df['username'] == u_input) & (df['password'] == p_input)]
-                    
-                    if not match.empty:
-                        st.session_state.update({'logged_in': True, 'username': u_input})
-                        st.rerun()
-                    else:
-                        st.error("Access Denied: Please check Row 2 in your Google Sheet.")
+    with st.form("login"):
+        u_input = st.text_input("Username").strip()
+        p_input = st.text_input("Password", type="password").strip()
+        
+        if st.form_submit_button("Login"):
+            df = get_data("users")
+            if not df.empty:
+                # Direct string cleanup to ensure Row 2 matches exactly
+                df['username'] = df['username'].astype(str).str.strip()
+                df['password'] = df['password'].astype(str).str.strip()
+                
+                match = df[(df['username'] == u_input) & (df['password'] == p_input)]
+                
+                if not match.empty:
+                    st.session_state.update({'logged_in': True, 'username': u_input})
+                    st.rerun()
                 else:
-                    st.error("Database Error: 'users' tab not found in Cloud.")
-    
-    with tab2:
-        with st.form("signup"):
-            nu = st.text_input("New Username").strip()
-            np = st.text_input("New Password", type="password").strip()
-            if st.form_submit_button("Sign Up"):
-                if nu and np:
-                    df = get_data("users")
-                    new_row = pd.DataFrame([{"username": nu, "password": np}])
-                    updated_df = pd.concat([df, new_row], ignore_index=True)
-                    conn.update(worksheet="users", data=updated_df)
-                    st.success("New user saved to Cloud! Try logging in.")
+                    st.error("Access Denied: Check Row 2 in your Google Sheet.")
+            else:
+                st.error("Database Error: 'users' tab not found.")
     st.stop()
 
 # ==============================
-# 4. MAIN SYSTEM (Stock Management)
+# 4. MAIN SYSTEM
 # ==============================
 curr_user = st.session_state['username']
 st.sidebar.title(f"👤 {curr_user}")
@@ -114,6 +96,7 @@ st.markdown(f'<div class="styled-header"><h1>🌸 Sakura97 Stock Management</h1>
 
 menu = st.sidebar.selectbox("Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
+# Inventory Operations
 if menu == "View Stock":
     stock_df = get_data("stock")
     if not stock_df.empty:
@@ -130,7 +113,7 @@ if menu == "View Stock":
                         st.subheader(row['product_name'])
                         st.write(f"Quantity: {row['quantity']} units")
                         st.markdown("---")
-        else: st.info("No items found.")
+        else: st.info("No items in stock.")
     else: st.warning("Stock tab is empty.")
 
 elif menu == "Stock In":
@@ -155,8 +138,8 @@ elif menu == "Stock In":
                 trans_df = get_data("transactions")
                 new_t = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": name, "type": "IN", "qty": qty, "user_id": curr_user}])
                 conn.update(worksheet="transactions", data=pd.concat([trans_df, new_t], ignore_index=True))
-                st.success("Synced to Google Sheets!")
-            else: st.error("Name is required.")
+                st.success("Cloud Updated!")
+            else: st.error("Name required.")
 
 elif menu == "Stock Out":
     st.subheader("📤 Remove Stock")
@@ -191,4 +174,4 @@ elif menu == "Daily Reports":
         report = trans_df[(trans_df['user_id'] == curr_user) & (trans_df['date_dt'].dt.year == y) & (trans_df['date_dt'].dt.month == m_idx)]
         if not report.empty:
             st.dataframe(report[['date', 'product_name', 'type', 'qty']], use_container_width=True)
-        else: st.info("No records found for this month.")
+        else: st.info("No records found.")
