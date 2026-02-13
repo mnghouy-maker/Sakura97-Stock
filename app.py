@@ -70,7 +70,23 @@ def set_ui_design(image_file):
             }}
             [data-testid="stSidebar"] {{ background-color: rgba(0, 0, 0, 0.4) !important; backdrop-filter: blur(10px); }}
             .styled-header {{ background-color: #262730; padding: 20px; border-radius: 20px; text-align: center; color: white; margin-bottom: 20px; }}
-            .corner-footer {{ position: fixed; right: 20px; bottom: 20px; background-color: #262730; color: white; padding: 10px; border-radius: 50px; z-index: 9999; }}
+
+            /* MOVED TO BOTTOM LEFT */
+            .corner-footer {{
+                position: fixed;
+                left: 20px;
+                bottom: 20px;
+                background-color: #262730;
+                color: white;
+                padding: 10px;
+                border-radius: 50px;
+                z-index: 9999;
+            }}
+
+            /* ===== FORCE BLACK COLOR FOR REQUESTED TEXT ===== */
+            .black-text {{
+                color: black !important;
+            }}
             </style>
             <div class="corner-footer">Created by: Sino Menghuy</div>
         """, unsafe_allow_html=True)
@@ -125,7 +141,7 @@ else:
     menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
     if menu == "View Stock":
-        st.subheader("📦 Current Inventory")
+        st.markdown('<h3 class="black-text">📦 Current Inventory</h3>', unsafe_allow_html=True)
         df = pd.read_sql_query("SELECT product_name as 'Product', quantity as 'In Stock' FROM stock", conn)
         if not df.empty:
             for index, row in df.iterrows():
@@ -143,11 +159,17 @@ else:
             st.info("No items in stock.")
 
     elif menu == "Stock In":
-        st.subheader("📥 Add/Update Stock")
+        st.markdown('<h3 class="black-text">📥 Add/Update Stock</h3>', unsafe_allow_html=True)
         with st.form("stock_in_form"):
-            name = st.text_input("Product Name").strip()
-            qty = st.number_input("Quantity to Add", min_value=1)
-            img_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
+            st.markdown('<p class="black-text">Product Name</p>', unsafe_allow_html=True)
+            name = st.text_input("").strip()
+
+            st.markdown('<p class="black-text">Quantity to Add</p>', unsafe_allow_html=True)
+            qty = st.number_input("", min_value=1)
+
+            st.markdown('<p class="black-text">Upload Image</p>', unsafe_allow_html=True)
+            img_file = st.file_uploader("", type=["jpg", "png", "jpeg"])
+
             if st.form_submit_button("Submit"):
                 if name:
                     img_path = f"images/{name}.png"
@@ -165,7 +187,7 @@ else:
                     st.error("Name required.")
 
     elif menu == "Stock Out":
-        st.subheader("📤 Remove Stock")
+        st.markdown('<h3 class="black-text">📤 Remove Stock</h3>', unsafe_allow_html=True)
         c.execute("SELECT product_name FROM stock")
         products = [row[0] for row in c.fetchall()]
         if products:
@@ -176,8 +198,10 @@ else:
                 current_inv = c.fetchone()[0]
                 if qty_out <= current_inv:
                     new_inv = current_inv - qty_out
-                    if new_inv == 0: c.execute("DELETE FROM stock WHERE product_name = ?", (selected_prod,))
-                    else: c.execute("UPDATE stock SET quantity = ? WHERE product_name = ?", (new_inv, selected_prod))
+                    if new_inv == 0: 
+                        c.execute("DELETE FROM stock WHERE product_name = ?", (selected_prod,))
+                    else: 
+                        c.execute("UPDATE stock SET quantity = ? WHERE product_name = ?", (new_inv, selected_prod))
                     
                     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, ?, ?, ?)", (selected_prod, "OUT", qty_out, now))
@@ -188,6 +212,5 @@ else:
                     st.error("Insufficient stock!")
 
     elif menu == "Daily Reports":
-        st.subheader("🗓 Transaction Archive")
-        # (Keep your existing report logic here...)
+        st.markdown('<h3 class="black-text">🗓 Transaction Archive</h3>', unsafe_allow_html=True)
         st.info("Report section is active for authorized users.")
