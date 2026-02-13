@@ -13,7 +13,7 @@ from PIL import Image
 conn = sqlite3.connect('stock.db', check_same_thread=False)
 c = conn.cursor()
 
-# Ensure all tables exist
+# Create tables if not exist
 c.execute('''CREATE TABLE IF NOT EXISTS stock 
              (id INTEGER PRIMARY KEY AUTOINCREMENT, 
               product_name TEXT UNIQUE, 
@@ -30,16 +30,11 @@ c.execute('''CREATE TABLE IF NOT EXISTS transactions
 c.execute('''CREATE TABLE IF NOT EXISTS users 
              (username TEXT PRIMARY KEY, password TEXT)''')
 
-# Fix for older databases missing columns
-try:
-    c.execute("ALTER TABLE stock ADD COLUMN image_path TEXT")
-except sqlite3.OperationalError:
-    pass 
-
-conn.commit()
-
+# Ensure image folder exists
 if not os.path.exists("images"):
     os.makedirs("images")
+
+conn.commit()
 
 # ==============================
 # 2. SECURITY FUNCTIONS
@@ -48,12 +43,10 @@ def make_hashes(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
 def check_hashes(password, hashed_text):
-    if make_hashes(password) == hashed_text:
-        return hashed_text
-    return False
+    return make_hashes(password) == hashed_text
 
 # ==============================
-# 3. UI, STYLING & FULL BACKGROUND
+# 3. UI DESIGN
 # ==============================
 def set_ui_design(image_file):
     if os.path.exists(image_file):
@@ -95,7 +88,6 @@ def set_ui_design(image_file):
                 font-weight: bold;
                 z-index: 9999;
             }}
-            /* Container styling */
             [data-testid="stVerticalBlock"] > div:has(div.stForm) {{
                 background-color: rgba(255, 255, 255, 0.9);
                 padding: 20px;
@@ -111,53 +103,68 @@ def set_ui_design(image_file):
 set_ui_design('BackImage.jpg')
 
 # ==============================
-# 4. AUTHENTICATION LOGIC
+# 4. SESSION STATE INIT
 # ==============================
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
+    st.session_state['user'] = None
 
-# Sidebar for Login/Signup
+# ==============================
+# 5. AUTHENTICATION LOGIC
+# ==============================
 if not st.session_state['logged_in']:
     st.markdown('<div class="styled-header"><h1 style="color:white !important;">🔐 System Access</h1></div>', unsafe_allow_html=True)
     
     auth_mode = st.sidebar.selectbox("Access Mode", ["Login", "Sign Up"])
     
+    # -------- SIGN UP --------
     if auth_mode == "Sign Up":
         st.subheader("Create New Account")
-        new_user = st.text_input("New Username")
-        new_pass = st.text_input("New Password", type='password')
+        new_user = st.text_input("New Username").strip()
+        new_pass = st.text_input("New Password", type='password').strip()
+        
         if st.button("Register"):
             if new_user and new_pass:
                 try:
-                    c.execute('INSERT INTO users(username, password) VALUES (?,?)', (new_user, make_hashes(new_pass)))
+                    c.execute('INSERT INTO users(username, password) VALUES (?,?)', 
+                              (new_user, make_hashes(new_pass)))
                     conn.commit()
-                    st.success("Account created! Please switch to Login mode.")
+                    
+                    # Auto-login after signup
+                    st.session_state['logged_in'] = True
+                    st.session_state['user'] = new_user
+                    st.success(f"Account created and logged in as '{new_user}'!")
+                    st.rerun()
                 except sqlite3.IntegrityError:
                     st.error("Username already exists.")
             else:
                 st.warning("Please fill all fields.")
-                
+    
+    # -------- LOGIN --------
     elif auth_mode == "Login":
         st.subheader("Login to Sakura97")
-        user = st.text_input("Username")
-        pswd = st.text_input("Password", type='password')
+        user = st.text_input("Username").strip()
+        pswd = st.text_input("Password", type='password').strip()
+        
         if st.button("Login"):
             c.execute('SELECT password FROM users WHERE username = ?', (user,))
             result = c.fetchone()
             if result and check_hashes(pswd, result[0]):
                 st.session_state['logged_in'] = True
                 st.session_state['user'] = user
+                st.success(f"Logged in as '{user}'")
                 st.rerun()
             else:
                 st.error("Invalid Username or Password")
 
 # ==============================
-# 5. MAIN APP (ONLY IF LOGGED IN)
+# 6. MAIN APP (LOGGED IN)
 # ==============================
 else:
     st.sidebar.success(f"Welcome, {st.session_state['user']}")
     if st.sidebar.button("Log Out"):
         st.session_state['logged_in'] = False
+        st.session_state['user'] = None
         st.rerun()
 
     st.markdown("""
@@ -168,6 +175,7 @@ else:
 
     menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
+    # -------- VIEW STOCK --------
     if menu == "View Stock":
         st.subheader("📦 Current Inventory")
         df = pd.read_sql_query("SELECT product_name as 'Product', quantity as 'In Stock' FROM stock", conn)
@@ -190,6 +198,7 @@ else:
         else:
             st.info("No items in stock.")
 
+    # -------- STOCK IN --------
     elif menu == "Stock In":
         st.subheader("📥 Add/Update Stock")
         with st.form("stock_in_form"):
@@ -214,6 +223,7 @@ else:
                 else:
                     st.error("Product name is required.")
 
+    # -------- STOCK OUT --------
     elif menu == "Stock Out":
         st.subheader("📤 Remove Stock")
         c.execute("SELECT product_name FROM stock")
@@ -244,20 +254,23 @@ else:
         else:
             st.warning("No products available.")
 
+    # -------- DAILY REPORTS --------
     elif menu == "Daily Reports":
         st.subheader("🗓 Transaction Archive")
         col_y, col_m = st.columns(2)
         with col_y:
             sel_year = st.selectbox("Year", list(range(2025, 2101)), index=1) # 2026 default
         with col_m:
-            months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+            months = ["January", "February", "March", "April", "May", "June", "July", 
+                      "August", "September", "October", "November", "December"]
             sel_month = st.selectbox("Month", months, index=datetime.now().month - 1)
 
         month_idx = f"{months.index(sel_month) + 1:02d}"
         search_str = f"{sel_year}-{month_idx}%"
-        report_df = pd.read_sql_query("SELECT date, product_name as 'Product', type as 'Action', qty as 'Quantity' FROM transactions WHERE date LIKE ? ORDER BY date DESC", conn, params=(search_str,))
+        report_df = pd.read_sql_query(
+            "SELECT date, product_name as 'Product', type as 'Action', qty as 'Quantity' "
+            "FROM transactions WHERE date LIKE ? ORDER BY date DESC", 
+            conn, params=(search_str,)
+        )
         
         if not report_df.empty:
-            st.dataframe(report_df, use_container_width=True)
-        else:
-            st.write(f"No activity for {sel_month} {sel_year}.")
