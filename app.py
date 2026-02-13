@@ -12,12 +12,14 @@ from PIL import Image
 conn = sqlite3.connect('stock.db', check_same_thread=False)
 c = conn.cursor()
 
+# ---- STOCK TABLE ----
 c.execute('''CREATE TABLE IF NOT EXISTS stock 
              (id INTEGER PRIMARY KEY AUTOINCREMENT, 
               product_name TEXT UNIQUE, 
               quantity INTEGER, 
               image_path TEXT)''')
 
+# ---- TRANSACTIONS TABLE ----
 c.execute('''CREATE TABLE IF NOT EXISTS transactions 
              (id INTEGER PRIMARY KEY AUTOINCREMENT, 
               product_name TEXT, 
@@ -25,6 +27,13 @@ c.execute('''CREATE TABLE IF NOT EXISTS transactions
               qty INTEGER, 
               date TEXT)''')
 
+# ---- USER TABLE (NEW) ----
+c.execute('''CREATE TABLE IF NOT EXISTS users
+             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+              username TEXT UNIQUE,
+              password TEXT)''')
+
+# Add image_path column if not exists
 try:
     c.execute("ALTER TABLE stock ADD COLUMN image_path TEXT")
 except sqlite3.OperationalError:
@@ -32,6 +41,7 @@ except sqlite3.OperationalError:
 
 conn.commit()
 
+# Create images folder if not exists
 if not os.path.exists("images"):
     os.makedirs("images")
 
@@ -104,7 +114,7 @@ def set_ui_design(image_file):
 set_ui_design('BackImage.jpg')
 
 # =========================================================================
-# THE HEADER BOX (Matching image_bea43d.png)
+# THE HEADER BOX
 # =========================================================================
 st.markdown("""
 <div class="styled-header">
@@ -112,10 +122,60 @@ st.markdown("""
     <p style='margin: 15px 0 0 0; color: #FFFFFF !important; font-size: 14px; font-weight: 400; opacity: 0.9;'>Managed by: ZK7 Office</p>
 </div>""", unsafe_allow_html=True)
 
+# ==============================
+# 3. LOGIN SYSTEM
+# ==============================
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    st.subheader("🔐 Login Required")
+    login_tab, register_tab = st.tabs(["Login", "Create Account"])
+
+    # ---- LOGIN ----
+    with login_tab:
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        if st.button("Login"):
+            c.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+            user = c.fetchone()
+            if user:
+                st.session_state.logged_in = True
+                st.success("Login Successful!")
+                st.rerun()
+            else:
+                st.error("Invalid Username or Password")
+
+    # ---- REGISTER ----
+    with register_tab:
+        new_user = st.text_input("Create Username")
+        new_pass = st.text_input("Create Password", type="password")
+        if st.button("Create Account"):
+            if new_user and new_pass:
+                try:
+                    c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (new_user, new_pass))
+                    conn.commit()
+                    st.success("Account Created Successfully! You can now login.")
+                except:
+                    st.error("Username already exists.")
+            else:
+                st.warning("Please fill all fields.")
+    st.stop()   # Stops system until login
+
+# ==============================
+# 4. LOGOUT BUTTON
+# ==============================
+if st.sidebar.button("Logout"):
+    st.session_state.logged_in = False
+    st.rerun()
+
+# ==============================
+# 5. MENU SELECTION
+# ==============================
 menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
 # ==============================
-# 3. VIEW STOCK
+# 6. VIEW STOCK
 # ==============================
 if menu == "View Stock":
     st.subheader("📦 Current Inventory")
@@ -140,7 +200,7 @@ if menu == "View Stock":
         st.info("No items in stock.")
 
 # ==============================
-# 4. STOCK IN
+# 7. STOCK IN
 # ==============================
 elif menu == "Stock In":
     st.subheader("📥 Add/Update Stock")
@@ -167,7 +227,7 @@ elif menu == "Stock In":
                 st.error("Product name is required.")
 
 # ==============================
-# 5. STOCK OUT
+# 8. STOCK OUT
 # ==============================
 elif menu == "Stock Out":
     st.subheader("📤 Remove Stock")
@@ -200,7 +260,7 @@ elif menu == "Stock Out":
         st.warning("No products available to remove.")
 
 # ==============================
-# 6. DAILY REPORTS (Long-Term 2100)
+# 9. DAILY REPORTS
 # ==============================
 elif menu == "Daily Reports":
     st.subheader("🗓 Transaction Archive (2026-2100)")
