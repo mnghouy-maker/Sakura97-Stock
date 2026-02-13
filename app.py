@@ -1,35 +1,18 @@
 import streamlit as st
-import sqlite3
+from streamlit_gsheets import GSheetsConnection
+import pandas as pd
 import os
 import base64
-import pandas as pd
 from datetime import datetime
 from PIL import Image
 
 # ==============================
-# 1. DATABASE SETUP
+# 1. GOOGLE SHEETS CONNECTION
 # ==============================
-conn = sqlite3.connect('stock.db', check_same_thread=False)
-c = conn.cursor()
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-c.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT)')
-c.execute('''CREATE TABLE IF NOT EXISTS stock 
-             (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-              user_id INTEGER,
-              product_name TEXT, 
-              quantity INTEGER, 
-              image_path TEXT)''')
-c.execute('''CREATE TABLE IF NOT EXISTS transactions 
-             (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-              user_id INTEGER,
-              product_name TEXT, 
-              type TEXT, 
-              qty INTEGER, 
-              date TEXT)''')
-conn.commit()
-
-if not os.path.exists("images"):
-    os.makedirs("images")
+def get_data(worksheet):
+    return conn.read(worksheet=worksheet, ttl="0s") # No cache so it's always live
 
 # ==============================
 # 2. UI & STYLING
@@ -50,31 +33,24 @@ def set_ui_design(image_file):
             [data-testid="stSidebar"] {{ background-color: rgba(0, 0, 0, 0.4) !important; backdrop-filter: blur(10px); }}
             .styled-header {{ 
                 background-color: #262730; 
-                padding: 30px; 
-                border-radius: 20px; 
-                text-align: center; 
-                margin-bottom: 30px; 
-                box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+                padding: 30px; border-radius: 20px; text-align: center; margin-bottom: 30px; 
             }}
-            .styled-header h1, .styled-header p {{ color: #FFFFFF !important; margin: 0; font-weight: bold; }}
-            /* White content cards */
+            .styled-header h1, .styled-header p {{ color: white !important; margin: 0; }}
             .st-emotion-cache-12w0qpk {{ background-color: rgba(255, 255, 255, 0.95) !important; border-radius: 15px !important; padding: 25px !important; }}
-            h2, h3, p {{ color: #1E1E1E !important; }}
             </style>
         """, unsafe_allow_html=True)
 
 set_ui_design('BackImage.jpg')
+if not os.path.exists("images"): os.makedirs("images")
 
 # ==============================
-# 3. AUTHENTICATION LOGIC
+# 3. AUTHENTICATION
 # ==============================
 if 'logged_in' not in st.session_state:
-    st.session_state['logged_in'] = False
-    st.session_state['user_id'] = None
-    st.session_state['username'] = ""
+    st.session_state.update({'logged_in': False, 'username': "", 'user_id': ""})
 
 if not st.session_state['logged_in']:
-    st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Secure Access</h1><p>Managed by: ZK7 Office</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="styled-header"><h1>🌸 Sakura97 Secure Access</h1><p>ZK7 Office Cloud Database</p></div>', unsafe_allow_html=True)
     tab1, tab2 = st.tabs(["Login", "Create Account"])
     
     with tab1:
@@ -82,124 +58,126 @@ if not st.session_state['logged_in']:
             u = st.text_input("Username")
             p = st.text_input("Password", type="password")
             if st.form_submit_button("Login"):
-                c.execute('SELECT id FROM users WHERE username = ? AND password = ?', (u, p))
-                res = c.fetchone()
-                if res:
-                    st.session_state.update({'logged_in': True, 'user_id': res[0], 'username': u})
+                users_df = get_data("users")
+                match = users_df[(users_df['username'] == u) & (users_df['password'] == p)]
+                if not match.empty:
+                    st.session_state.update({'logged_in': True, 'username': u})
                     st.rerun()
-                else: st.error("Invalid credentials")
+                else: st.error("Wrong Username/Password")
+
     with tab2:
         with st.form("signup"):
             nu = st.text_input("New Username")
             np = st.text_input("New Password", type="password")
             if st.form_submit_button("Sign Up"):
-                try:
-                    c.execute('INSERT INTO users (username, password) VALUES (?, ?)', (nu, np))
-                    conn.commit()
-                    st.success("Account created! Go to Login tab.")
-                except: st.error("Username already exists")
+                users_df = get_data("users")
+                if nu not in users_df['username'].values:
+                    new_row = pd.DataFrame([{"username": nu, "password": np}])
+                    updated_users = pd.concat([users_df, new_row], ignore_index=True)
+                    conn.update(worksheet="users", data=updated_users)
+                    st.success("Account created! You can login now.")
+                else: st.error("Username taken")
     st.stop()
 
 # ==============================
-# 4. MAIN APPLICATION
+# 4. MAIN APP
 # ==============================
-uid = st.session_state['user_id']
-st.sidebar.write(f"Logged in as: **{st.session_state['username']}**")
+curr_user = st.session_state['username']
+st.sidebar.title(f"👤 {curr_user}")
 if st.sidebar.button("Logout"):
     st.session_state['logged_in'] = False
     st.rerun()
 
-st.markdown(f"""
-<div class="styled-header">
-    <h1>🌸 Sakura97 Stock Management</h1>
-    <p>User: {st.session_state['username']} | Managed by: ZK7 Office</p>
-</div>""", unsafe_allow_html=True)
+st.markdown(f'<div class="styled-header"><h1>🌸 Sakura97 Stock Management</h1><p>Cloud Synchronized: {curr_user}</p></div>', unsafe_allow_html=True)
 
-menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
+menu = st.sidebar.selectbox("Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
 # --- VIEW STOCK ---
 if menu == "View Stock":
-    st.subheader("📦 My Inventory")
-    df = pd.read_sql_query("SELECT product_name as 'Product', quantity as 'In Stock' FROM stock WHERE user_id = ?", conn, params=(uid,))
-    if not df.empty:
-        for i, row in df.iterrows():
+    stock_df = get_data("stock")
+    my_stock = stock_df[stock_df['user_id'] == curr_user]
+    if not my_stock.empty:
+        for _, row in my_stock.iterrows():
             with st.container():
                 col1, col2 = st.columns([1,4])
-                img_p = f"images/{uid}_{row['Product']}.png"
+                img_path = f"images/{curr_user}_{row['product_name']}.png"
                 with col1:
-                    if os.path.exists(img_p): st.image(img_p, use_container_width=True)
+                    if os.path.exists(img_path): st.image(img_path, use_container_width=True)
                     else: st.caption("No Image")
                 with col2:
-                    st.markdown(f"### {row['Product']}")
-                    st.write(f"**Stock Level:** {row['In Stock']} units")
+                    st.subheader(row['product_name'])
+                    st.write(f"Quantity: {row['quantity']} units")
                     st.markdown("---")
-    else: st.info("No stock recorded.")
+    else: st.info("No stock found.")
 
 # --- STOCK IN ---
 elif menu == "Stock In":
-    st.subheader("📥 Add Stock")
-    with st.form("in"):
+    st.subheader("📥 Add Stock to Cloud")
+    with st.form("stock_in"):
         name = st.text_input("Product Name").strip()
         qty = st.number_input("Quantity", min_value=1)
-        img = st.file_uploader("Upload Image", type=["jpg", "png"])
-        if st.form_submit_button("Submit"):
+        img_file = st.file_uploader("Image", type=["jpg", "png"])
+        if st.form_submit_button("Update Sheet"):
             if name:
-                path = f"images/{uid}_{name}.png"
-                if img: Image.open(img).save(path)
-                c.execute("SELECT id FROM stock WHERE user_id = ? AND product_name = ?", (uid, name))
-                if c.fetchone(): c.execute("UPDATE stock SET quantity = quantity + ? WHERE user_id = ? AND product_name = ?", (qty, uid, name))
-                else: c.execute("INSERT INTO stock (user_id, product_name, quantity, image_path) VALUES (?, ?, ?, ?)", (uid, name, qty, path))
-                c.execute("INSERT INTO transactions (user_id, product_name, type, qty, date) VALUES (?, ?, 'IN', ?, ?)", (uid, name, qty, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                conn.commit()
-                st.success("Stock added!")
-            else: st.error("Enter product name")
+                stock_df = get_data("stock")
+                idx = stock_df[(stock_df['user_id'] == curr_user) & (stock_df['product_name'] == name)].index
+                
+                if not idx.empty:
+                    stock_df.at[idx[0], 'quantity'] += qty
+                else:
+                    new_item = pd.DataFrame([{"product_name": name, "quantity": qty, "user_id": curr_user}])
+                    stock_df = pd.concat([stock_df, new_item], ignore_index=True)
+                
+                if img_file: Image.open(img_file).save(f"images/{curr_user}_{name}.png")
+                conn.update(worksheet="stock", data=stock_df)
+                
+                # Update Transactions
+                trans_df = get_data("transactions")
+                new_trans = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": name, "type": "IN", "qty": qty, "user_id": curr_user}])
+                conn.update(worksheet="transactions", data=pd.concat([trans_df, new_trans], ignore_index=True))
+                st.success("Cloud Updated!")
+            else: st.error("Name required")
 
 # --- STOCK OUT ---
 elif menu == "Stock Out":
-    st.subheader("📤 Remove Stock")
-    c.execute("SELECT product_name FROM stock WHERE user_id = ?", (uid,))
-    items = [r[0] for r in c.fetchall()]
-    if items:
-        sel = st.selectbox("Select Product", items)
-        q_out = st.number_input("Quantity to Remove", min_value=1)
-        if st.button("Confirm Removal"):
-            c.execute("SELECT quantity FROM stock WHERE user_id = ? AND product_name = ?", (uid, sel))
-            curr = c.fetchone()[0]
-            if q_out <= curr:
-                c.execute("UPDATE stock SET quantity = ? WHERE user_id = ? AND product_name = ?", (curr - q_out, uid, sel))
-                c.execute("INSERT INTO transactions (user_id, product_name, type, qty, date) VALUES (?, ?, 'OUT', ?, ?)", (uid, sel, q_out, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                conn.commit()
-                st.success("Updated!"); st.rerun()
-            else: st.error("Insufficient stock!")
-    else: st.warning("Inventory empty.")
+    st.subheader("📤 Remove Stock from Cloud")
+    stock_df = get_data("stock")
+    my_items = stock_df[stock_df['user_id'] == curr_user]['product_name'].tolist()
+    if my_items:
+        sel = st.selectbox("Product", my_items)
+        q_out = st.number_input("Qty", min_value=1)
+        if st.button("Confirm"):
+            idx = stock_df[(stock_df['user_id'] == curr_user) & (stock_df['product_name'] == sel)].index[0]
+            if q_out <= stock_df.at[idx, 'quantity']:
+                stock_df.at[idx, 'quantity'] -= q_out
+                conn.update(worksheet="stock", data=stock_df)
+                
+                trans_df = get_data("transactions")
+                new_t = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": sel, "type": "OUT", "qty": q_out, "user_id": curr_user}])
+                conn.update(worksheet="transactions", data=pd.concat([trans_df, new_t], ignore_index=True))
+                st.success("Cloud Updated!"); st.rerun()
+            else: st.error("Not enough stock!")
 
-# --- DAILY REPORTS (WITH DAY-BY-DAY FILTER) ---
+# --- DAILY REPORTS ---
 elif menu == "Daily Reports":
-    st.subheader("🗓 My Archive (2026-2100)")
-    col1, col2 = st.columns(2)
-    with col1: y = st.selectbox("Year", list(range(2026, 2101)))
-    with col2:
-        months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-        m = st.selectbox("Month", months, index=datetime.now().month-1)
+    st.subheader("🗓 Cloud Archive")
+    y = st.selectbox("Year", list(range(2026, 2101)))
+    m_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    m = st.selectbox("Month", m_names, index=datetime.now().month-1)
     
-    st.write("🔍 **Select Day Range:**")
-    d_col1, d_col2 = st.columns(2)
-    with d_col1: s_day = st.number_input("From Day", 1, 31, 1)
-    with d_col2: e_day = st.number_input("To Day", 1, 31, 31)
+    s_day = st.number_input("From Day", 1, 31, 1)
+    e_day = st.number_input("To Day", 1, 31, 31)
 
-    m_idx = f"{months.index(m) + 1:02d}"
-    search = f"{y}-{m_idx}%"
-    df_rep = pd.read_sql_query("SELECT date, product_name as 'Product', type as 'Action', qty as 'Quantity' FROM transactions WHERE user_id = ? AND date LIKE ? ORDER BY date DESC", conn, params=(uid, search))
+    trans_df = get_data("transactions")
+    trans_df['Date/Time'] = pd.to_datetime(trans_df['date'])
     
-    if not df_rep.empty:
-        df_rep['Date/Time'] = pd.to_datetime(df_rep['date'])
-        df_rep['Day'] = df_rep['Date/Time'].dt.day
-        filtered = df_rep[(df_rep['Day'] >= s_day) & (df_rep['Day'] <= e_day)]
-        
-        if not filtered.empty:
-            st.dataframe(filtered[['Date/Time', 'Day', 'Product', 'Action', 'Quantity']], use_container_width=True)
-            tin = filtered[filtered['Action'] == 'IN']['Quantity'].sum()
-            tout = filtered[filtered['Action'] == 'OUT']['Quantity'].sum()
-            st.info(f"📊 **Summary (Day {s_day}-{e_day})**: {tin} IN | {tout} OUT")
-        else: st.warning("No records for this day range.")
-    else: st.write("No activity this month.")
+    m_idx = m_names.index(m) + 1
+    report = trans_df[(trans_df['user_id'] == curr_user) & 
+                      (trans_df['Date/Time'].dt.year == y) & 
+                      (trans_df['Date/Time'].dt.month == m_idx) &
+                      (trans_df['Date/Time'].dt.day >= s_day) &
+                      (trans_df['Date/Time'].dt.day <= e_day)]
+    
+    if not report.empty:
+        st.dataframe(report[['date', 'product_name', 'type', 'qty']], use_container_width=True)
+    else: st.write("No data for this range.")
