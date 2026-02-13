@@ -13,13 +13,11 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def get_data(worksheet_name):
     try:
-        # ttl="0s" ensures we bypass cache for live ZK7 Office updates
+        # ttl="0s" forces the app to look at the sheet every single time
         df = conn.read(worksheet=worksheet_name, ttl="0s")
         if df is None or df.empty:
-            # Create standard structures if sheet is empty
             if worksheet_name == "users": return pd.DataFrame(columns=["username", "password"])
-            if worksheet_name == "stock": return pd.DataFrame(columns=["product_name", "quantity", "user_id"])
-            if worksheet_name == "transactions": return pd.DataFrame(columns=["date", "product_name", "type", "qty", "user_id"])
+            return pd.DataFrame()
         return df
     except Exception:
         return pd.DataFrame()
@@ -50,12 +48,11 @@ def set_ui_design(image_file):
             </style>
         """, unsafe_allow_html=True)
 
-# Load UI background
 set_ui_design('BackImage.jpg')
 if not os.path.exists("images"): os.makedirs("images")
 
 # ==============================
-# 3. AUTHENTICATION (LOGIN FIX)
+# 3. AUTHENTICATION
 # ==============================
 if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'username': ""})
@@ -66,23 +63,26 @@ if not st.session_state['logged_in']:
     
     with tab1:
         with st.form("login"):
-            # .strip() removes accidental spaces from user input
             u_input = st.text_input("Username").strip()
             p_input = st.text_input("Password", type="password").strip()
             
             if st.form_submit_button("Login"):
                 df = get_data("users")
                 if not df.empty:
-                    # FORCE all sheet data to be clean strings to ensure a match
+                    # FORCE clean comparison
                     df['username'] = df['username'].astype(str).str.strip()
                     df['password'] = df['password'].astype(str).str.strip()
                     
+                    # Logic: Find a match where BOTH are true
                     match = df[(df['username'] == u_input) & (df['password'] == p_input)]
+                    
                     if not match.empty:
                         st.session_state.update({'logged_in': True, 'username': u_input})
                         st.rerun()
-                
-                st.error("Access Denied: Please re-type row 2 in your Google Sheet or check credentials.")
+                    else:
+                        st.error("Access Denied: The data in the sheet doesn't match what you typed.")
+                else:
+                    st.error("Database Error: Could not find any users in the sheet.")
     
     with tab2:
         with st.form("signup"):
@@ -94,11 +94,11 @@ if not st.session_state['logged_in']:
                     new_row = pd.DataFrame([{"username": nu, "password": np}])
                     updated_df = pd.concat([df, new_row], ignore_index=True)
                     conn.update(worksheet="users", data=updated_df)
-                    st.success("Account created! Please log in.")
+                    st.success("Account created! Try logging in now.")
     st.stop()
 
 # ==============================
-# 4. MAIN INVENTORY SYSTEM
+# 4. MAIN SYSTEM
 # ==============================
 curr_user = st.session_state['username']
 st.sidebar.title(f"👤 {curr_user}")
@@ -110,7 +110,7 @@ st.markdown(f'<div class="styled-header"><h1>🌸 Sakura97 Stock Management</h1>
 
 menu = st.sidebar.selectbox("Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
-# Inventory Logic
+# Inventory pages
 if menu == "View Stock":
     stock_df = get_data("stock")
     if not stock_df.empty:
@@ -127,7 +127,7 @@ if menu == "View Stock":
                         st.subheader(row['product_name'])
                         st.write(f"Quantity: {row['quantity']} units")
                         st.markdown("---")
-        else: st.info("No items found.")
+        else: st.info("No stock items found.")
     else: st.warning("Stock database is empty.")
 
 elif menu == "Stock In":
@@ -149,11 +149,11 @@ elif menu == "Stock In":
                 if img_file: Image.open(img_file).save(f"images/{curr_user}_{name}.png")
                 conn.update(worksheet="stock", data=stock_df)
                 
-                # Transaction logging
+                # Log transaction
                 trans_df = get_data("transactions")
                 new_t = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": name, "type": "IN", "qty": qty, "user_id": curr_user}])
                 conn.update(worksheet="transactions", data=pd.concat([trans_df, new_t], ignore_index=True))
-                st.success("Cloud Updated!")
+                st.success("Synced to Cloud!")
             else: st.error("Product name required.")
 
 elif menu == "Stock Out":
@@ -173,7 +173,7 @@ elif menu == "Stock Out":
                     trans_df = get_data("transactions")
                     new_t = pd.DataFrame([{"date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "product_name": sel, "type": "OUT", "qty": q_out, "user_id": curr_user}])
                     conn.update(worksheet="transactions", data=pd.concat([trans_df, new_t], ignore_index=True))
-                    st.success("Stock logged!"); st.rerun()
+                    st.success("Updated!"); st.rerun()
                 else: st.error("Not enough stock.")
 
 elif menu == "Daily Reports":
