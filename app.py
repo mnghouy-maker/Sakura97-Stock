@@ -48,7 +48,7 @@ def check_hashes(password, hashed_text):
     return make_hashes(password) == hashed_text
 
 # ==============================
-# 3. UI DESIGN (GRAY BOXES & SUBMIT BUTTONS)
+# 3. UI DESIGN (ALL BOXES GRAY)
 # ==============================
 @st.cache_data
 def get_base64_bin(file_path):
@@ -78,39 +78,50 @@ def set_ui_design(image_file):
         }}
 
         [data-testid="stSidebar"] {{
-            background-color: rgba(0, 0, 0, 0.6) !important;
+            background-color: rgba(0, 0, 0, 0.7) !important;
             backdrop-filter: blur(15px);
         }}
         
-        [data-testid="stSidebar"] * {{
-            color: white !important;
-        }}
-
-        /* --- SELECT MENU GRAY BOXES --- */
+        /* --- SELECT MENU & DROPDOWNS GRAY --- */
         div[data-baseweb="select"] > div {{
             background-color: #4F4F4F !important;
-            border-color: #707070 !important;
+            border: 1px solid #707070 !important;
+            color: white !important;
         }}
         
-        /* --- ALL BUTTONS (LOGIN, LOGOUT, & SUBMIT) GRAY --- */
+        /* --- INPUT BOXES (TEXT, NUMBER) GRAY --- */
+        div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input {{
+            background-color: #4F4F4F !important;
+            color: white !important;
+            border: 1px solid #707070 !important;
+        }}
+
+        /* --- ALL BUTTONS (LOGIN, LOGOUT, SUBMIT) GRAY --- */
         div.stButton > button, div.stFormSubmitButton > button {{
             background-color: #616161 !important;
             color: white !important;
             border: 1px solid #888888 !important;
             border-radius: 8px;
-            padding: 0.5rem 1rem;
             transition: 0.3s;
-            width: 100%; /* Makes buttons full width for a cleaner look */
+            width: 100%;
         }}
         
         div.stButton > button:hover, div.stFormSubmitButton > button:hover {{
             background-color: #808080 !important;
             border-color: white !important;
-            color: white !important;
+        }}
+
+        /* --- THE MAIN CONTENT BOXES (VIEW, IN, OUT, REPORTS) --- */
+        [data-testid="stVerticalBlock"] > div:has(div.stForm), 
+        .stDataFrame, .stTable, .element-container:has(.stMetric) {{
+            background-color: rgba(70, 70, 70, 0.6) !important;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #555;
         }}
 
         .styled-header {{
-            background-color: rgba(38, 39, 48, 0.8);
+            background-color: rgba(50, 50, 50, 0.8);
             padding: 40px 20px;
             border-radius: 20px;
             text-align: center;
@@ -122,20 +133,12 @@ def set_ui_design(image_file):
         .corner-footer {{
             position: fixed;
             right: 20px; bottom: 20px;
-            background-color: #262730;
+            background-color: #333333;
             color: white !important;
             padding: 10px 25px;
             border-radius: 50px;
             font-size: 14px;
             z-index: 9999;
-        }}
-
-        /* Container for forms */
-        [data-testid="stVerticalBlock"] > div:has(div.stForm) {{
-            background-color: rgba(0, 0, 0, 0.5);
-            padding: 20px;
-            border-radius: 15px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
         }}
         
         header {{background: rgba(0,0,0,0) !important;}}
@@ -201,6 +204,7 @@ else:
 
     menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
+    # -------- VIEW STOCK --------
     if menu == "View Stock":
         st.subheader("📦 Current Inventory")
         df = pd.read_sql_query("SELECT product_name as 'Product', quantity as 'In Stock' FROM stock", conn)
@@ -217,13 +221,13 @@ else:
                     st.markdown("---")
         else: st.info("No items in stock.")
 
+    # -------- STOCK IN --------
     elif menu == "Stock In":
         st.subheader("📥 Add/Update Stock")
         with st.form("stock_in_form", clear_on_submit=True):
             name = st.text_input("Product Name").strip()
             qty = st.number_input("Quantity", min_value=1)
             img_file = st.file_uploader("Image", type=["jpg", "png"])
-            # THIS IS THE SUBMIT BOX
             if st.form_submit_button("Submit"):
                 if name:
                     img_path = f"images/{name}.png"
@@ -233,6 +237,7 @@ else:
                     conn.commit()
                     st.success(f"Added {qty} units.")
 
+    # -------- STOCK OUT --------
     elif menu == "Stock Out":
         st.subheader("📤 Remove Stock")
         c.execute("SELECT product_name FROM stock")
@@ -241,7 +246,6 @@ else:
             with st.form("stock_out_form"):
                 selected_prod = st.selectbox("Product", products)
                 qty_out = st.number_input("Remove Qty", min_value=1)
-                # THIS IS THE SUBMIT BOX
                 if st.form_submit_button("Confirm"):
                     c.execute("SELECT quantity FROM stock WHERE product_name = ?", (selected_prod,))
                     curr = c.fetchone()[0]
@@ -256,6 +260,7 @@ else:
                     else: st.error("Low stock.")
         else: st.warning("Inventory Empty")
 
+    # -------- DAILY REPORTS --------
     elif menu == "Daily Reports":
         st.subheader("🗓 Reports")
         col_s, col_e = st.columns(2)
