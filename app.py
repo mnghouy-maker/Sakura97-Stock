@@ -7,6 +7,7 @@ import hashlib
 from datetime import datetime
 from PIL import Image
 from io import BytesIO
+from fpdf import FPDF
 
 # ==============================
 # 1. DATABASE & DIRECTORY SETUP
@@ -39,13 +40,39 @@ if not os.path.exists("images"):
 conn.commit()
 
 # ==============================
-# 2. SECURITY FUNCTIONS
+# 2. SECURITY & UTILS
 # ==============================
 def make_hashes(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
 def check_hashes(password, hashed_text):
     return make_hashes(password) == hashed_text
+
+def create_pdf(df, start, end):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(200, 10, txt=f"SK97 Stock Report ({start} to {end})", ln=True, align='C')
+    pdf.ln(10)
+    
+    # Table Header
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(50, 10, "Date", 1)
+    pdf.cell(80, 10, "Product", 1)
+    pdf.cell(30, 10, "Type", 1)
+    pdf.cell(30, 10, "Qty", 1)
+    pdf.ln()
+    
+    # Table Body
+    pdf.set_font("Arial", size=10)
+    for index, row in df.iterrows():
+        pdf.cell(50, 10, str(row['date'])[:10], 1)
+        pdf.cell(80, 10, str(row['product_name']), 1)
+        pdf.cell(30, 10, str(row['type']), 1)
+        pdf.cell(30, 10, str(row['qty']), 1)
+        pdf.ln()
+        
+    return pdf.output(dest='S').encode('latin-1')
 
 # ==============================
 # 3. UI DESIGN (ALL BOXES GRAY)
@@ -65,82 +92,16 @@ def set_ui_design(image_file):
 
     st.markdown(f"""
         <style>
-        .stApp {{
-            {bg_style}
-            background-attachment: fixed;
-            background-size: cover;
-            background-position: center;
-        }}
-        
-        /* FORCE ALL TEXT TO WHITE */
-        h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, .stText, .stMetric, [data-testid="stHeader"] {{
-            color: white !important;
-        }}
-
-        [data-testid="stSidebar"] {{
-            background-color: rgba(0, 0, 0, 0.7) !important;
-            backdrop-filter: blur(15px);
-        }}
-        
-        /* --- SELECT MENU & DROPDOWNS GRAY --- */
-        div[data-baseweb="select"] > div {{
-            background-color: #4F4F4F !important;
-            border: 1px solid #707070 !important;
-            color: white !important;
-        }}
-        
-        /* --- INPUT BOXES (TEXT, NUMBER) GRAY --- */
-        div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input {{
-            background-color: #4F4F4F !important;
-            color: white !important;
-            border: 1px solid #707070 !important;
-        }}
-
-        /* --- ALL BUTTONS (LOGIN, LOGOUT, SUBMIT) GRAY --- */
-        div.stButton > button, div.stFormSubmitButton > button {{
-            background-color: #616161 !important;
-            color: white !important;
-            border: 1px solid #888888 !important;
-            border-radius: 8px;
-            transition: 0.3s;
-            width: 100%;
-        }}
-        
-        div.stButton > button:hover, div.stFormSubmitButton > button:hover {{
-            background-color: #808080 !important;
-            border-color: white !important;
-        }}
-
-        /* --- THE MAIN CONTENT BOXES (VIEW, IN, OUT, REPORTS) --- */
-        [data-testid="stVerticalBlock"] > div:has(div.stForm), 
-        .stDataFrame, .stTable, .element-container:has(.stMetric) {{
-            background-color: rgba(70, 70, 70, 0.6) !important;
-            padding: 15px;
-            border-radius: 12px;
-            border: 1px solid #555;
-        }}
-
-        .styled-header {{
-            background-color: rgba(50, 50, 50, 0.8);
-            padding: 40px 20px;
-            border-radius: 20px;
-            text-align: center;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-            margin: 0 auto 40px auto;
-            max-width: 700px;
-        }}
-
-        .corner-footer {{
-            position: fixed;
-            right: 20px; bottom: 20px;
-            background-color: #333333;
-            color: white !important;
-            padding: 10px 25px;
-            border-radius: 50px;
-            font-size: 14px;
-            z-index: 9999;
-        }}
-        
+        .stApp {{ {bg_style} background-attachment: fixed; background-size: cover; background-position: center; }}
+        h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, .stText, .stMetric, [data-testid="stHeader"] {{ color: white !important; }}
+        [data-testid="stSidebar"] {{ background-color: rgba(0, 0, 0, 0.7) !important; backdrop-filter: blur(15px); }}
+        div[data-baseweb="select"] > div {{ background-color: #4F4F4F !important; border: 1px solid #707070 !important; color: white !important; }}
+        div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input {{ background-color: #4F4F4F !important; color: white !important; border: 1px solid #707070 !important; }}
+        div.stButton > button, div.stFormSubmitButton > button, div.stDownloadButton > button {{ background-color: #616161 !important; color: white !important; border: 1px solid #888888 !important; border-radius: 8px; transition: 0.3s; width: 100%; }}
+        div.stButton > button:hover, div.stFormSubmitButton > button:hover, div.stDownloadButton > button:hover {{ background-color: #808080 !important; border-color: white !important; }}
+        [data-testid="stVerticalBlock"] > div:has(div.stForm), .stDataFrame, .stTable, .element-container:has(.stMetric) {{ background-color: rgba(70, 70, 70, 0.6) !important; padding: 15px; border-radius: 12px; border: 1px solid #555; }}
+        .styled-header {{ background-color: rgba(50, 50, 50, 0.8); padding: 40px 20px; border-radius: 20px; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.3); margin: 0 auto 40px auto; max-width: 700px; }}
+        .corner-footer {{ position: fixed; right: 20px; bottom: 20px; background-color: #333333; color: white !important; padding: 10px 25px; border-radius: 50px; font-size: 14px; z-index: 9999; }}
         header {{background: rgba(0,0,0,0) !important;}}
         </style>
         <div class="corner-footer">Created by: Sino Menghuy</div>
@@ -149,19 +110,15 @@ def set_ui_design(image_file):
 set_ui_design('BackImage.jpg')
 
 # ==============================
-# 4. SESSION STATE
+# 4. SESSION STATE & AUTH
 # ==============================
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
     st.session_state['user'] = None
 
-# ==============================
-# 5. AUTHENTICATION
-# ==============================
 if not st.session_state['logged_in']:
     st.markdown('<div class="styled-header"><h1>🔐 System Access</h1></div>', unsafe_allow_html=True)
     auth_mode = st.sidebar.selectbox("Access Mode", ["Login", "Sign Up"])
-    
     if auth_mode == "Sign Up":
         st.subheader("Create New Account")
         new_user = st.text_input("New Username").strip()
@@ -173,7 +130,6 @@ if not st.session_state['logged_in']:
                     conn.commit()
                     st.success("Account created!")
                 except: st.error("Username already exists.")
-    
     elif auth_mode == "Login":
         st.subheader("Login to SK97")
         user = st.text_input("Username").strip()
@@ -186,11 +142,10 @@ if not st.session_state['logged_in']:
                 st.session_state['user'] = user
                 st.rerun()
             else: st.error("Invalid Credentials.")
-
-# ==============================
-# 6. MAIN APP
-# ==============================
 else:
+    # ==============================
+    # 6. MAIN APP LOGIC
+    # ==============================
     st.sidebar.success(f"Welcome, {st.session_state['user']}")
     if st.sidebar.button("Log Out"):
         st.session_state['logged_in'] = False
@@ -204,7 +159,6 @@ else:
 
     menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
-    # -------- VIEW STOCK --------
     if menu == "View Stock":
         st.subheader("📦 Current Inventory")
         df = pd.read_sql_query("SELECT product_name as 'Product', quantity as 'In Stock' FROM stock", conn)
@@ -221,7 +175,6 @@ else:
                     st.markdown("---")
         else: st.info("No items in stock.")
 
-    # -------- STOCK IN --------
     elif menu == "Stock In":
         st.subheader("📥 Add/Update Stock")
         with st.form("stock_in_form", clear_on_submit=True):
@@ -237,7 +190,6 @@ else:
                     conn.commit()
                     st.success(f"Added {qty} units.")
 
-    # -------- STOCK OUT --------
     elif menu == "Stock Out":
         st.subheader("📤 Remove Stock")
         c.execute("SELECT product_name FROM stock")
@@ -260,7 +212,6 @@ else:
                     else: st.error("Low stock.")
         else: st.warning("Inventory Empty")
 
-    # -------- DAILY REPORTS --------
     elif menu == "Daily Reports":
         st.subheader("🗓 Reports")
         col_s, col_e = st.columns(2)
@@ -270,14 +221,36 @@ else:
         report_df = pd.read_sql_query("SELECT date, product_name, type, qty FROM transactions WHERE date(date) BETWEEN ? AND ?", conn, params=(str(start_date), str(end_date)))
         
         if not report_df.empty:
-            st.dataframe(report_df, use_container_width=True)
+            # Display Report with Images
+            st.markdown("### Transaction Log")
+            for index, row in report_df.iterrows():
+                with st.container():
+                    rcol1, rcol2 = st.columns([1, 5])
+                    img_path = f"images/{row['product_name']}.png"
+                    with rcol1:
+                        if os.path.exists(img_path): st.image(img_path, width=60)
+                        else: st.caption("N/A")
+                    with rcol2:
+                        color = "green" if row['type'] == 'IN' else "red"
+                        st.markdown(f"**{row['date']}** | {row['product_name']} | <span style='color:{color}'>{row['type']}</span> | **{row['qty']} units**", unsafe_allow_html=True)
+                st.divider()
+
+            # Download Buttons
+            st.markdown("### Export Data")
+            dl_col1, dl_col2 = st.columns(2)
+            
+            # Excel
             output = BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 report_df.to_excel(writer, index=False)
-            st.download_button("🟢 Download Excel", output.getvalue(), f"SK97_Report.xlsx")
+            dl_col1.download_button("🟢 Download Excel", output.getvalue(), f"SK97_Report.xlsx")
+            
+            # PDF
+            pdf_data = create_pdf(report_df, start_date, end_date)
+            dl_col2.download_button("🔴 Download PDF", pdf_data, f"SK97_Report.pdf", "application/pdf")
             
             st.markdown("---")
             m1, m2 = st.columns(2)
             m1.metric("Total IN", report_df[report_df['type']=='IN']['qty'].sum())
             m2.metric("Total OUT", report_df[report_df['type']=='OUT']['qty'].sum())
-        else: st.warning("No data.")
+        else: st.warning("No data found for this period.")
