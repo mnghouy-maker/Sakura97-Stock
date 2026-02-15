@@ -7,12 +7,10 @@ import hashlib
 from datetime import datetime
 from PIL import Image
 from io import BytesIO
-from fpdf import FPDF
 
 # ==============================
 # 1. DATABASE & DIRECTORY SETUP
 # ==============================
-# Using a function to ensure connection is cached/handled efficiently
 def get_db_connection():
     conn = sqlite3.connect('stock.db', check_same_thread=False)
     return conn
@@ -50,7 +48,7 @@ def check_hashes(password, hashed_text):
     return make_hashes(password) == hashed_text
 
 # ==============================
-# 3. UI DESIGN (WHITE TEXT & SPEED)
+# 3. UI DESIGN (GRAY BOXES & BUTTONS)
 # ==============================
 @st.cache_data
 def get_base64_bin(file_path):
@@ -73,17 +71,40 @@ def set_ui_design(image_file):
             background-size: cover;
             background-position: center;
         }}
+        
         /* FORCE ALL TEXT TO WHITE */
         h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, .stText, .stMetric, [data-testid="stHeader"] {{
             color: white !important;
         }}
+
         [data-testid="stSidebar"] {{
             background-color: rgba(0, 0, 0, 0.6) !important;
             backdrop-filter: blur(15px);
         }}
+        
         [data-testid="stSidebar"] * {{
             color: white !important;
         }}
+
+        /* --- SELECT MENU GRAY BOXES --- */
+        div[data-baseweb="select"] > div {{
+            background-color: #4F4F4F !important;
+            border-color: #707070 !important;
+        }}
+        
+        /* --- LOGIN & LOGOUT BUTTONS GRAY --- */
+        div.stButton > button {{
+            background-color: #616161 !important;
+            color: white !important;
+            border: 1px solid #888888 !important;
+            transition: 0.3s;
+        }}
+        
+        div.stButton > button:hover {{
+            background-color: #808080 !important;
+            border-color: white !important;
+        }}
+
         .styled-header {{
             background-color: rgba(38, 39, 48, 0.8);
             padding: 40px 20px;
@@ -93,6 +114,7 @@ def set_ui_design(image_file):
             margin: 0 auto 40px auto;
             max-width: 700px;
         }}
+
         .corner-footer {{
             position: fixed;
             right: 20px; bottom: 20px;
@@ -103,7 +125,7 @@ def set_ui_design(image_file):
             font-size: 14px;
             z-index: 9999;
         }}
-        /* Form background to contrast with white letters */
+
         [data-testid="stVerticalBlock"] > div:has(div.stForm) {{
             background-color: rgba(0, 0, 0, 0.5);
             padding: 20px;
@@ -173,7 +195,6 @@ else:
 
     menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
-    # -------- VIEW STOCK --------
     if menu == "View Stock":
         st.subheader("📦 Current Inventory")
         df = pd.read_sql_query("SELECT product_name as 'Product', quantity as 'In Stock' FROM stock", conn)
@@ -190,7 +211,6 @@ else:
                     st.markdown("---")
         else: st.info("No items in stock.")
 
-    # -------- STOCK IN --------
     elif menu == "Stock In":
         st.subheader("📥 Add/Update Stock")
         with st.form("stock_in_form", clear_on_submit=True):
@@ -206,7 +226,6 @@ else:
                     conn.commit()
                     st.success(f"Added {qty} units.")
 
-    # -------- STOCK OUT --------
     elif menu == "Stock Out":
         st.subheader("📤 Remove Stock")
         c.execute("SELECT product_name FROM stock")
@@ -229,7 +248,6 @@ else:
                     else: st.error("Low stock.")
         else: st.warning("Inventory Empty")
 
-    # -------- DAILY REPORTS --------
     elif menu == "Daily Reports":
         st.subheader("🗓 Reports")
         col_s, col_e = st.columns(2)
@@ -240,13 +258,11 @@ else:
         
         if not report_df.empty:
             st.dataframe(report_df, use_container_width=True)
-            # Excel Export
             output = BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 report_df.to_excel(writer, index=False)
             st.download_button("🟢 Download Excel", output.getvalue(), f"SK97_Report.xlsx")
             
-            # Metrics
             st.markdown("---")
             m1, m2 = st.columns(2)
             m1.metric("Total IN", report_df[report_df['type']=='IN']['qty'].sum())
