@@ -48,7 +48,7 @@ def check_hashes(password, hashed_text):
     return make_hashes(password) == hashed_text
 
 # ==============================
-# 3. UI DESIGN (GRAY BOXES & BUTTONS)
+# 3. UI DESIGN (GRAY BOXES & SUBMIT BUTTONS)
 # ==============================
 @st.cache_data
 def get_base64_bin(file_path):
@@ -92,17 +92,21 @@ def set_ui_design(image_file):
             border-color: #707070 !important;
         }}
         
-        /* --- LOGIN & LOGOUT BUTTONS GRAY --- */
-        div.stButton > button {{
+        /* --- ALL BUTTONS (LOGIN, LOGOUT, & SUBMIT) GRAY --- */
+        div.stButton > button, div.stFormSubmitButton > button {{
             background-color: #616161 !important;
             color: white !important;
             border: 1px solid #888888 !important;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
             transition: 0.3s;
+            width: 100%; /* Makes buttons full width for a cleaner look */
         }}
         
-        div.stButton > button:hover {{
+        div.stButton > button:hover, div.stFormSubmitButton > button:hover {{
             background-color: #808080 !important;
             border-color: white !important;
+            color: white !important;
         }}
 
         .styled-header {{
@@ -126,12 +130,14 @@ def set_ui_design(image_file):
             z-index: 9999;
         }}
 
+        /* Container for forms */
         [data-testid="stVerticalBlock"] > div:has(div.stForm) {{
             background-color: rgba(0, 0, 0, 0.5);
             padding: 20px;
             border-radius: 15px;
             border: 1px solid rgba(255, 255, 255, 0.1);
         }}
+        
         header {{background: rgba(0,0,0,0) !important;}}
         </style>
         <div class="corner-footer">Created by: Sino Menghuy</div>
@@ -217,6 +223,7 @@ else:
             name = st.text_input("Product Name").strip()
             qty = st.number_input("Quantity", min_value=1)
             img_file = st.file_uploader("Image", type=["jpg", "png"])
+            # THIS IS THE SUBMIT BOX
             if st.form_submit_button("Submit"):
                 if name:
                     img_path = f"images/{name}.png"
@@ -234,6 +241,7 @@ else:
             with st.form("stock_out_form"):
                 selected_prod = st.selectbox("Product", products)
                 qty_out = st.number_input("Remove Qty", min_value=1)
+                # THIS IS THE SUBMIT BOX
                 if st.form_submit_button("Confirm"):
                     c.execute("SELECT quantity FROM stock WHERE product_name = ?", (selected_prod,))
                     curr = c.fetchone()[0]
