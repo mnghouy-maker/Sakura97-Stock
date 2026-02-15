@@ -7,7 +7,6 @@ import hashlib
 from datetime import datetime
 from PIL import Image
 from io import BytesIO
-from fpdf import FPDF
 
 # ==============================
 # 1. DATABASE & DIRECTORY SETUP
@@ -40,36 +39,13 @@ if not os.path.exists("images"):
 conn.commit()
 
 # ==============================
-# 2. SECURITY & UTILS
+# 2. SECURITY FUNCTIONS
 # ==============================
 def make_hashes(password):
     return hashlib.sha256(str.encode(password)).hexdigest()
 
 def check_hashes(password, hashed_text):
     return make_hashes(password) == hashed_text
-
-def create_pdf(df, start, end):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt=f"SK97 Stock Report ({start} to {end})", ln=True, align='C')
-    pdf.ln(10)
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(45, 10, "Date", 1)
-    pdf.cell(85, 10, "Product", 1)
-    pdf.cell(30, 10, "Type", 1)
-    pdf.cell(30, 10, "Qty", 1)
-    pdf.ln()
-    pdf.set_font("Arial", size=10)
-    for index, row in df.iterrows():
-        # Encode to latin-1 and replace unknown chars with '?' to avoid UnicodeEncodeError
-        name_safe = str(row['product_name']).encode('latin-1', 'replace').decode('latin-1')
-        pdf.cell(45, 10, str(row['date'])[:10], 1)
-        pdf.cell(85, 10, name_safe, 1)
-        pdf.cell(30, 10, str(row['type']), 1)
-        pdf.cell(30, 10, str(row['qty']), 1)
-        pdf.ln()
-    return pdf.output(dest='S')
 
 # ==============================
 # 3. UI DESIGN (GRAY THEME)
@@ -87,14 +63,54 @@ def set_ui_design(image_file):
     st.markdown(f"""
         <style>
         .stApp {{ {bg_style} background-attachment: fixed; background-size: cover; background-position: center; }}
-        h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, .stText, .stMetric, [data-testid="stHeader"] {{ color: white !important; }}
-        [data-testid="stSidebar"] {{ background-color: rgba(0, 0, 0, 0.7) !important; backdrop-filter: blur(15px); }}
+        
+        /* White Text for all elements */
+        h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, .stText, .stMetric, [data-testid="stHeader"] {{ 
+            color: white !important; 
+        }}
+
+        [data-testid="stSidebar"] {{ 
+            background-color: rgba(0, 0, 0, 0.7) !important; 
+            backdrop-filter: blur(15px); 
+        }}
+        
+        /* Gray Inputs and Selectors */
         div[data-baseweb="select"] > div {{ background-color: #4F4F4F !important; border: 1px solid #707070 !important; color: white !important; }}
-        div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input {{ background-color: #4F4F4F !important; color: white !important; border: 1px solid #707070 !important; }}
-        div.stButton > button, div.stFormSubmitButton > button, div.stDownloadButton > button {{ background-color: #616161 !important; color: white !important; border: 1px solid #888888 !important; border-radius: 8px; width: 100%; }}
-        div.stButton > button:hover, div.stFormSubmitButton > button:hover {{ background-color: #808080 !important; border-color: white !important; }}
-        [data-testid="stVerticalBlock"] > div:has(div.stForm), .stDataFrame, .stTable, .element-container:has(.stMetric) {{ background-color: rgba(70, 70, 70, 0.6) !important; padding: 15px; border-radius: 12px; border: 1px solid #555; }}
-        .styled-header {{ background-color: rgba(50, 50, 50, 0.8); padding: 40px 20px; border-radius: 20px; text-align: center; margin-bottom: 40px; }}
+        div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input {{ 
+            background-color: #4F4F4F !important; 
+            color: white !important; 
+            border: 1px solid #707070 !important; 
+        }}
+
+        /* Gray Buttons */
+        div.stButton > button, div.stFormSubmitButton > button, div.stDownloadButton > button {{ 
+            background-color: #616161 !important; 
+            color: white !important; 
+            border: 1px solid #888888 !important; 
+            border-radius: 8px; 
+            width: 100%; 
+        }}
+        
+        div.stButton > button:hover, div.stFormSubmitButton > button:hover {{ 
+            background-color: #808080 !important; 
+            border-color: white !important; 
+        }}
+
+        /* Gray Containers */
+        [data-testid="stVerticalBlock"] > div:has(div.stForm), .stDataFrame, .stTable, .element-container:has(.stMetric) {{ 
+            background-color: rgba(70, 70, 70, 0.6) !important; 
+            padding: 15px; 
+            border-radius: 12px; 
+            border: 1px solid #555; 
+        }}
+
+        .styled-header {{ 
+            background-color: rgba(50, 50, 50, 0.8); 
+            padding: 40px 20px; 
+            border-radius: 20px; 
+            text-align: center; 
+            margin-bottom: 40px; 
+        }}
         header {{background: rgba(0,0,0,0) !important;}}
         </style>
     """, unsafe_allow_html=True)
@@ -112,6 +128,7 @@ if not st.session_state['logged_in']:
     auth_mode = st.sidebar.selectbox("Access Mode", ["Login", "Sign Up"])
     user = st.text_input("Username").strip()
     pswd = st.text_input("Password", type='password').strip()
+    
     if st.button("Submit"):
         if auth_mode == "Login":
             c.execute('SELECT password FROM users WHERE username = ?', (user,))
@@ -126,7 +143,7 @@ if not st.session_state['logged_in']:
                 c.execute('INSERT INTO users(username, password) VALUES (?,?)', (user, make_hashes(pswd)))
                 conn.commit()
                 st.success("Account created!")
-            except: st.error("User exists")
+            except: st.error("User already exists.")
 else:
     # ==============================
     # 5. MAIN APP LOGIC
@@ -180,41 +197,36 @@ else:
                 q_out = st.number_input("Qty", min_value=1)
                 if st.form_submit_button("Confirm"):
                     c.execute("SELECT quantity FROM stock WHERE product_name = ?", (sel,))
-                    curr = c.fetchone()[0]
-                    if q_out <= curr:
+                    res = c.fetchone()
+                    if res and q_out <= res[0]:
                         c.execute("UPDATE stock SET quantity = quantity - ? WHERE product_name = ?", (q_out, sel))
                         c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, 'OUT', ?, ?)", (sel, q_out, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                         conn.commit()
-                        st.success("Updated!")
+                        st.success("Updated successfully!")
                         st.rerun()
-                    else: st.error("Not enough stock!")
+                    else: st.error("Insufficient stock!")
         else: st.warning("Inventory is empty.")
 
-    # --- DELETE STOCK (NEW OPTION) ---
+    # --- DELETE STOCK ---
     elif menu == "Delete Stock":
         st.subheader("🗑 Delete Product")
-        st.warning("Warning: This will permanently remove the product and its image from the database.")
+        st.warning("This will permanently remove the product and its image.")
         c.execute("SELECT product_name FROM stock")
         prods = [r[0] for r in c.fetchall()]
         if prods:
             with st.form("delete_form"):
                 to_delete = st.selectbox("Select product to remove", prods)
-                confirm = st.checkbox("I confirm I want to delete this product")
+                confirm = st.checkbox("Confirm deletion")
                 if st.form_submit_button("Delete Permanently"):
                     if confirm:
-                        # Remove image file if it exists
                         img_path = f"images/{to_delete}.png"
-                        if os.path.exists(img_path):
-                            os.remove(img_path)
-                        # Remove from DB
+                        if os.path.exists(img_path): os.remove(img_path)
                         c.execute("DELETE FROM stock WHERE product_name = ?", (to_delete,))
                         conn.commit()
                         st.success(f"Deleted {to_delete}")
                         st.rerun()
-                    else:
-                        st.error("Please check the confirmation box first.")
-        else:
-            st.info("No products to delete.")
+                    else: st.error("Check the confirmation box.")
+        else: st.info("No products to delete.")
 
     # --- DAILY REPORTS ---
     elif menu == "Daily Reports":
@@ -222,7 +234,9 @@ else:
         c1, c2 = st.columns(2)
         start = c1.date_input("Start")
         end = c2.date_input("End")
+        
         report_df = pd.read_sql_query("SELECT date, product_name, type, qty FROM transactions WHERE date(date) BETWEEN ? AND ?", conn, params=(str(start), str(end)))
+        
         if not report_df.empty:
             for _, row in report_df.iterrows():
                 with st.container():
@@ -236,10 +250,8 @@ else:
                 st.divider()
             
             st.write("### Export")
-            pdf_bytes = create_pdf(report_df, start, end)
-            st.download_button("🔴 Download PDF", pdf_bytes, "Report.pdf", "application/pdf")
             buffer = BytesIO()
             report_df.to_excel(buffer, index=False)
             st.download_button("🟢 Download Excel", buffer.getvalue(), "Report.xlsx")
         else:
-            st.warning("No data found.")
+            st.warning("No data found for these dates.")
