@@ -11,7 +11,6 @@ from io import BytesIO
 # ==============================
 # 1. DATABASE & DIRECTORY SETUP
 # ==============================
-# Ensure the images directory exists immediately
 if not os.path.exists("images"):
     os.makedirs("images")
 
@@ -218,34 +217,36 @@ else:
         with tab2:
             with st.form("create_new"):
                 new_name = st.text_input("New Product Name")
-                initial_qty = st.number_input("Initial Quantity (Put 0 to just add the type)", min_value=0, value=0)
-                new_img = st.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg'])
+                initial_qty = st.number_input("Initial Quantity", min_value=0, value=0)
+                new_img = st.file_uploader("Upload Any Photo", type=['png', 'jpg', 'jpeg'])
                 
                 if st.form_submit_button("Register Product"):
                     if new_name:
-                        # FIXED: Use os.path.join and verify directory existence
-                        if not os.path.exists("images"):
-                            os.makedirs("images")
+                        # Ensures folder exists
+                        if not os.path.exists("images"): os.makedirs("images")
                         
-                        img_filename = f"{new_name}.png"
-                        img_path = os.path.join("images", img_filename)
+                        # Use Product Name as the file name, regardless of what the user uploaded
+                        img_path = os.path.join("images", f"{new_name}.png")
                         
                         try:
                             if new_img: 
-                                Image.open(new_img).save(img_path)
+                                # Convert and save as PNG using the Product Name
+                                Image.open(new_img).convert("RGB").save(img_path, "PNG")
                             
                             c.execute("INSERT INTO stock (product_name, quantity, image_path) VALUES (?, ?, ?)", 
                                       (new_name, initial_qty, img_path))
+                            
                             if initial_qty > 0:
                                 c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, 'IN', ?, ?)", 
                                           (new_name, initial_qty, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                            
                             conn.commit()
-                            st.success(f"Registered {new_name} with {initial_qty} units.")
+                            st.success(f"Registered {new_name} successfully!")
                             st.rerun()
                         except sqlite3.IntegrityError:
                             st.error("This product name already exists!")
                         except Exception as e:
-                            st.error(f"Error saving product: {e}")
+                            st.error(f"Error: {e}")
                     else:
                         st.error("Please enter a product name.")
 
