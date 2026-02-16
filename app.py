@@ -64,7 +64,6 @@ def set_ui_design(image_file):
         <style>
         .stApp {{ {bg_style} background-attachment: fixed; background-size: cover; background-position: center; }}
         
-        /* White Text for all elements */
         h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, .stText, .stMetric, [data-testid="stHeader"] {{ 
             color: white !important; 
         }}
@@ -74,7 +73,6 @@ def set_ui_design(image_file):
             backdrop-filter: blur(15px); 
         }}
         
-        /* Gray Inputs and Selectors */
         div[data-baseweb="select"] > div {{ background-color: #4F4F4F !important; border: 1px solid #707070 !important; color: white !important; }}
         div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input {{ 
             background-color: #4F4F4F !important; 
@@ -82,7 +80,6 @@ def set_ui_design(image_file):
             border: 1px solid #707070 !important; 
         }}
 
-        /* Button Styling */
         div.stButton > button {{ 
             background-color: #616161 !important; 
             color: white !important; 
@@ -91,7 +88,6 @@ def set_ui_design(image_file):
             width: 100%; 
         }}
         
-        /* Red Delete Buttons */
         .stButton > button[key^="del_"] {{
             background-color: #8B0000 !important;
             border-color: #FF4B4B !important;
@@ -102,7 +98,6 @@ def set_ui_design(image_file):
             border-color: white !important; 
         }}
 
-        /* Gray Containers */
         [data-testid="stVerticalBlock"] > div:has(div.stForm), .stDataFrame, .stTable, .element-container:has(.stMetric) {{ 
             background-color: rgba(70, 70, 70, 0.6) !important; 
             padding: 15px; 
@@ -195,21 +190,55 @@ else:
         else: 
             st.info("No stock found.")
 
-    # --- STOCK IN ---
+    # --- STOCK IN (Updated to allow Creating Product Types) ---
     elif menu == "Stock In":
-        st.subheader("📥 Stock In")
-        with st.form("in"):
-            name = st.text_input("Product Name")
-            qty = st.number_input("Qty", min_value=1)
-            img = st.file_uploader("Image", type=['png', 'jpg'])
-            if st.form_submit_button("Submit"):
-                img_path = f"images/{name}.png"
-                if img: Image.open(img).save(img_path)
-                c.execute("INSERT OR REPLACE INTO stock (product_name, quantity, image_path) VALUES (?, COALESCE((SELECT quantity FROM stock WHERE product_name=?),0) + ?, ?)", (name, name, qty, img_path))
-                c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, 'IN', ?, ?)", (name, qty, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                conn.commit()
-                st.success(f"Added {qty} to {name}")
-                st.rerun()
+        st.subheader("📥 Stock In / Add New Type")
+        
+        # Get existing items for the dropdown
+        c.execute("SELECT product_name FROM stock")
+        existing_prods = [r[0] for r in c.fetchall()]
+        
+        tab1, tab2 = st.tabs(["Add to Existing", "Create New Type"])
+        
+        with tab1:
+            if existing_prods:
+                with st.form("add_existing"):
+                    sel_name = st.selectbox("Select Product", existing_prods)
+                    add_qty = st.number_input("Quantity to Add", min_value=1)
+                    if st.form_submit_button("Add Stock"):
+                        c.execute("UPDATE stock SET quantity = quantity + ? WHERE product_name = ?", (add_qty, sel_name))
+                        c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, 'IN', ?, ?)", 
+                                  (sel_name, add_qty, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                        conn.commit()
+                        st.success(f"Added {add_qty} to {sel_name}")
+                        st.rerun()
+            else:
+                st.info("No products registered yet. Go to 'Create New Type'.")
+
+        with tab2:
+            with st.form("create_new"):
+                new_name = st.text_input("New Product Name")
+                initial_qty = st.number_input("Initial Quantity (Put 0 to just add the type)", min_value=0, value=0)
+                new_img = st.file_uploader("Upload Image", type=['png', 'jpg'])
+                
+                if st.form_submit_button("Register Product"):
+                    if new_name:
+                        img_path = f"images/{new_name}.png"
+                        if new_img: Image.open(new_img).save(img_path)
+                        
+                        try:
+                            c.execute("INSERT INTO stock (product_name, quantity, image_path) VALUES (?, ?, ?)", 
+                                      (new_name, initial_qty, img_path))
+                            if initial_qty > 0:
+                                c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, 'IN', ?, ?)", 
+                                          (new_name, initial_qty, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                            conn.commit()
+                            st.success(f"Registered {new_name} with {initial_qty} units.")
+                            st.rerun()
+                        except:
+                            st.error("This product name already exists!")
+                    else:
+                        st.error("Please enter a product name.")
 
     # --- STOCK OUT ---
     elif menu == "Stock Out":
@@ -243,7 +272,6 @@ else:
         
         if not report_df.empty:
             st.write(f"#### Total Transactions: {len(report_df)}")
-            # Added numbering to report loop
             for i, row in enumerate(report_df.iloc, 1):
                 with st.container():
                     r0, r1, r2 = st.columns([0.5, 1, 5])
