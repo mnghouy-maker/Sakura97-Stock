@@ -11,6 +11,10 @@ from io import BytesIO
 # ==============================
 # 1. DATABASE & DIRECTORY SETUP
 # ==============================
+# Ensure the images directory exists immediately
+if not os.path.exists("images"):
+    os.makedirs("images")
+
 def get_db_connection():
     conn = sqlite3.connect('stock.db', check_same_thread=False)
     return conn
@@ -34,8 +38,6 @@ c.execute('''CREATE TABLE IF NOT EXISTS transactions
 c.execute('''CREATE TABLE IF NOT EXISTS users 
              (username TEXT PRIMARY KEY, password TEXT)''')
 
-if not os.path.exists("images"):
-    os.makedirs("images")
 conn.commit()
 
 # ==============================
@@ -164,7 +166,7 @@ else:
         if not df.empty:
             for i, row in enumerate(df.iloc, 1):
                 col0, col1, col2, col3 = st.columns([0.5, 1.5, 4, 1])
-                img_p = f"images/{row['product_name']}.png"
+                img_p = os.path.join("images", f"{row['product_name']}.png")
                 
                 with col0:
                     st.write(f"### {i}.") 
@@ -180,8 +182,7 @@ else:
                 with col3:
                     st.write("") 
                     if st.button("Delete", key=f"del_{row['product_name']}"):
-                        img_path = f"images/{row['product_name']}.png"
-                        if os.path.exists(img_path): os.remove(img_path)
+                        if os.path.exists(img_p): os.remove(img_p)
                         c.execute("DELETE FROM stock WHERE product_name = ?", (row['product_name'],))
                         conn.commit()
                         st.success(f"Deleted {row['product_name']}")
@@ -190,11 +191,10 @@ else:
         else: 
             st.info("No stock found.")
 
-    # --- STOCK IN (Updated to allow Creating Product Types) ---
+    # --- STOCK IN ---
     elif menu == "Stock In":
         st.subheader("📥 Stock In / Add New Type")
         
-        # Get existing items for the dropdown
         c.execute("SELECT product_name FROM stock")
         existing_prods = [r[0] for r in c.fetchall()]
         
@@ -219,14 +219,21 @@ else:
             with st.form("create_new"):
                 new_name = st.text_input("New Product Name")
                 initial_qty = st.number_input("Initial Quantity (Put 0 to just add the type)", min_value=0, value=0)
-                new_img = st.file_uploader("Upload Image", type=['png', 'jpg'])
+                new_img = st.file_uploader("Upload Image", type=['png', 'jpg', 'jpeg'])
                 
                 if st.form_submit_button("Register Product"):
                     if new_name:
-                        img_path = f"images/{new_name}.png"
-                        if new_img: Image.open(new_img).save(img_path)
+                        # FIXED: Use os.path.join and verify directory existence
+                        if not os.path.exists("images"):
+                            os.makedirs("images")
+                        
+                        img_filename = f"{new_name}.png"
+                        img_path = os.path.join("images", img_filename)
                         
                         try:
+                            if new_img: 
+                                Image.open(new_img).save(img_path)
+                            
                             c.execute("INSERT INTO stock (product_name, quantity, image_path) VALUES (?, ?, ?)", 
                                       (new_name, initial_qty, img_path))
                             if initial_qty > 0:
@@ -235,8 +242,10 @@ else:
                             conn.commit()
                             st.success(f"Registered {new_name} with {initial_qty} units.")
                             st.rerun()
-                        except:
+                        except sqlite3.IntegrityError:
                             st.error("This product name already exists!")
+                        except Exception as e:
+                            st.error(f"Error saving product: {e}")
                     else:
                         st.error("Please enter a product name.")
 
@@ -275,7 +284,7 @@ else:
             for i, row in enumerate(report_df.iloc, 1):
                 with st.container():
                     r0, r1, r2 = st.columns([0.5, 1, 5])
-                    img_p = f"images/{row['product_name']}.png"
+                    img_p = os.path.join("images", f"{row['product_name']}.png")
                     with r0:
                         st.write(f"**{i}.**")
                     with r1:
