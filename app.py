@@ -4,6 +4,7 @@ import os
 import base64
 import pandas as pd
 import hashlib
+import time
 from datetime import datetime
 from PIL import Image
 from io import BytesIO
@@ -11,8 +12,10 @@ from io import BytesIO
 # ==============================
 # 1. DATABASE & DIRECTORY SETUP
 # ==============================
-if not os.path.exists("images"):
-    os.makedirs("images")
+# Global directory check
+IMG_DIR = "images"
+if not os.path.exists(IMG_DIR):
+    os.makedirs(IMG_DIR)
 
 def get_db_connection():
     conn = sqlite3.connect('stock.db', check_same_thread=False)
@@ -64,55 +67,15 @@ def set_ui_design(image_file):
     st.markdown(f"""
         <style>
         .stApp {{ {bg_style} background-attachment: fixed; background-size: cover; background-position: center; }}
-        
-        h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, .stText, .stMetric, [data-testid="stHeader"] {{ 
-            color: white !important; 
-        }}
-
-        [data-testid="stSidebar"] {{ 
-            background-color: rgba(0, 0, 0, 0.7) !important; 
-            backdrop-filter: blur(15px); 
-        }}
-        
+        h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, .stText, .stMetric, [data-testid="stHeader"] {{ color: white !important; }}
+        [data-testid="stSidebar"] {{ background-color: rgba(0, 0, 0, 0.7) !important; backdrop-filter: blur(15px); }}
         div[data-baseweb="select"] > div {{ background-color: #4F4F4F !important; border: 1px solid #707070 !important; color: white !important; }}
-        div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input {{ 
-            background-color: #4F4F4F !important; 
-            color: white !important; 
-            border: 1px solid #707070 !important; 
-        }}
-
-        div.stButton > button {{ 
-            background-color: #616161 !important; 
-            color: white !important; 
-            border: 1px solid #888888 !important; 
-            border-radius: 8px; 
-            width: 100%; 
-        }}
-        
-        .stButton > button[key^="del_"] {{
-            background-color: #8B0000 !important;
-            border-color: #FF4B4B !important;
-        }}
-
-        div.stButton > button:hover {{ 
-            background-color: #808080 !important; 
-            border-color: white !important; 
-        }}
-
-        [data-testid="stVerticalBlock"] > div:has(div.stForm), .stDataFrame, .stTable, .element-container:has(.stMetric) {{ 
-            background-color: rgba(70, 70, 70, 0.6) !important; 
-            padding: 15px; 
-            border-radius: 12px; 
-            border: 1px solid #555; 
-        }}
-
-        .styled-header {{ 
-            background-color: rgba(50, 50, 50, 0.8); 
-            padding: 40px 20px; 
-            border-radius: 20px; 
-            text-align: center; 
-            margin-bottom: 40px; 
-        }}
+        div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input {{ background-color: #4F4F4F !important; color: white !important; border: 1px solid #707070 !important; }}
+        div.stButton > button {{ background-color: #616161 !important; color: white !important; border: 1px solid #888888 !important; border-radius: 8px; width: 100%; }}
+        .stButton > button[key^="del_"] {{ background-color: #8B0000 !important; border-color: #FF4B4B !important; }}
+        div.stButton > button:hover {{ background-color: #808080 !important; border-color: white !important; }}
+        [data-testid="stVerticalBlock"] > div:has(div.stForm), .stDataFrame, .stTable, .element-container:has(.stMetric) {{ background-color: rgba(70, 70, 70, 0.6) !important; padding: 15px; border-radius: 12px; border: 1px solid #555; }}
+        .styled-header {{ background-color: rgba(50, 50, 50, 0.8); padding: 40px 20px; border-radius: 20px; text-align: center; margin-bottom: 40px; }}
         header {{background: rgba(0,0,0,0) !important;}}
         </style>
     """, unsafe_allow_html=True)
@@ -159,20 +122,22 @@ else:
 
     # --- VIEW STOCK ---
     if menu == "View Stock":
-        df = pd.read_sql_query("SELECT product_name, quantity FROM stock", conn)
+        df = pd.read_sql_query("SELECT product_name, quantity, image_path FROM stock", conn)
         st.subheader(f"📦 Current Inventory ({len(df)} Types)")
         
         if not df.empty:
             for i, row in enumerate(df.iloc, 1):
                 col0, col1, col2, col3 = st.columns([0.5, 1.5, 4, 1])
-                img_p = os.path.join("images", f"{row['product_name']}.png")
+                img_p = row['image_path']
                 
                 with col0:
                     st.write(f"### {i}.") 
                 
                 with col1:
-                    if os.path.exists(img_p): st.image(img_p)
-                    else: st.write("🖼️")
+                    if img_p and os.path.exists(img_p): 
+                        st.image(img_p)
+                    else: 
+                        st.write("🖼️")
                 
                 with col2:
                     st.write(f"### {row['product_name']}")
@@ -181,7 +146,8 @@ else:
                 with col3:
                     st.write("") 
                     if st.button("Delete", key=f"del_{row['product_name']}"):
-                        if os.path.exists(img_p): os.remove(img_p)
+                        if img_p and os.path.exists(img_p): 
+                            os.remove(img_p)
                         c.execute("DELETE FROM stock WHERE product_name = ?", (row['product_name'],))
                         conn.commit()
                         st.success(f"Deleted {row['product_name']}")
@@ -193,7 +159,6 @@ else:
     # --- STOCK IN ---
     elif menu == "Stock In":
         st.subheader("📥 Stock In / Add New Type")
-        
         c.execute("SELECT product_name FROM stock")
         existing_prods = [r[0] for r in c.fetchall()]
         
@@ -212,43 +177,43 @@ else:
                         st.success(f"Added {add_qty} to {sel_name}")
                         st.rerun()
             else:
-                st.info("No products registered yet. Go to 'Create New Type'.")
+                st.info("No products registered yet.")
 
         with tab2:
             with st.form("create_new"):
                 new_name = st.text_input("New Product Name")
                 initial_qty = st.number_input("Initial Quantity", min_value=0, value=0)
-                new_img = st.file_uploader("Upload Any Photo", type=['png', 'jpg', 'jpeg'])
+                new_img = st.file_uploader("Upload Any Photo (Any filename)", type=['png', 'jpg', 'jpeg'])
                 
                 if st.form_submit_button("Register Product"):
                     if new_name:
-                        # Ensures folder exists
-                        if not os.path.exists("images"): os.makedirs("images")
-                        
-                        # Use Product Name as the file name, regardless of what the user uploaded
-                        img_path = os.path.join("images", f"{new_name}.png")
+                        # Logic: Use a timestamp so the filename is ALWAYS unique
+                        final_img_path = ""
+                        if new_img:
+                            timestamp = int(time.time())
+                            file_ext = new_img.name.split('.')[-1]
+                            save_name = f"img_{timestamp}.{file_ext}"
+                            final_img_path = os.path.join(IMG_DIR, save_name)
+                            
+                            try:
+                                with open(final_img_path, "wb") as f:
+                                    f.write(new_img.getbuffer())
+                            except Exception as e:
+                                st.error(f"Save failed: {e}")
                         
                         try:
-                            if new_img: 
-                                # Convert and save as PNG using the Product Name
-                                Image.open(new_img).convert("RGB").save(img_path, "PNG")
-                            
                             c.execute("INSERT INTO stock (product_name, quantity, image_path) VALUES (?, ?, ?)", 
-                                      (new_name, initial_qty, img_path))
-                            
+                                      (new_name, initial_qty, final_img_path))
                             if initial_qty > 0:
                                 c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, 'IN', ?, ?)", 
                                           (new_name, initial_qty, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                            
                             conn.commit()
-                            st.success(f"Registered {new_name} successfully!")
+                            st.success(f"Registered {new_name}")
                             st.rerun()
                         except sqlite3.IntegrityError:
                             st.error("This product name already exists!")
-                        except Exception as e:
-                            st.error(f"Error: {e}")
                     else:
-                        st.error("Please enter a product name.")
+                        st.error("Enter a product name.")
 
     # --- STOCK OUT ---
     elif menu == "Stock Out":
@@ -278,18 +243,22 @@ else:
         start = c1.date_input("Start")
         end = c2.date_input("End")
         
-        report_df = pd.read_sql_query("SELECT date, product_name, type, qty FROM transactions WHERE date(date) BETWEEN ? AND ?", conn, params=(str(start), str(end)))
+        report_df = pd.read_sql_query("""
+            SELECT t.date, t.product_name, t.type, t.qty, s.image_path 
+            FROM transactions t 
+            LEFT JOIN stock s ON t.product_name = s.product_name 
+            WHERE date(t.date) BETWEEN ? AND ?
+        """, conn, params=(str(start), str(end)))
         
         if not report_df.empty:
             st.write(f"#### Total Transactions: {len(report_df)}")
             for i, row in enumerate(report_df.iloc, 1):
                 with st.container():
                     r0, r1, r2 = st.columns([0.5, 1, 5])
-                    img_p = os.path.join("images", f"{row['product_name']}.png")
-                    with r0:
-                        st.write(f"**{i}.**")
+                    with r0: st.write(f"**{i}.**")
                     with r1:
-                        if os.path.exists(img_p): st.image(img_p, width=60)
+                        if row['image_path'] and os.path.exists(row['image_path']):
+                            st.image(row['image_path'], width=60)
                     with r2:
                         color = "green" if row['type'] == 'IN' else "red"
                         st.markdown(f"**{row['date']}** | {row['product_name']} | <span style='color:{color}'>{row['type']}</span> | **{row['qty']}**", unsafe_allow_html=True)
@@ -297,7 +266,7 @@ else:
             
             st.write("### Export")
             buffer = BytesIO()
-            report_df.to_excel(buffer, index=False)
+            report_df[['date', 'product_name', 'type', 'qty']].to_excel(buffer, index=False)
             st.download_button("🟢 Download Excel", buffer.getvalue(), "Report.xlsx")
         else:
-            st.warning("No data found for these dates.")
+            st.warning("No data found.")
