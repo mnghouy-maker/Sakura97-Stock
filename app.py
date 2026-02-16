@@ -12,7 +12,6 @@ from io import BytesIO
 # ==============================
 # 1. DATABASE & DIRECTORY SETUP
 # ==============================
-# Global directory check
 IMG_DIR = "images"
 if not os.path.exists(IMG_DIR):
     os.makedirs(IMG_DIR)
@@ -69,11 +68,21 @@ def set_ui_design(image_file):
         .stApp {{ {bg_style} background-attachment: fixed; background-size: cover; background-position: center; }}
         h1, h2, h3, h4, h5, h6, p, li, label, .stMarkdown, .stText, .stMetric, [data-testid="stHeader"] {{ color: white !important; }}
         [data-testid="stSidebar"] {{ background-color: rgba(0, 0, 0, 0.7) !important; backdrop-filter: blur(15px); }}
+        
+        /* Inputs & Search Bar */
         div[data-baseweb="select"] > div {{ background-color: #4F4F4F !important; border: 1px solid #707070 !important; color: white !important; }}
-        div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input {{ background-color: #4F4F4F !important; color: white !important; border: 1px solid #707070 !important; }}
+        div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input {{ 
+            background-color: rgba(79, 79, 79, 0.9) !important; 
+            color: white !important; 
+            border: 1px solid #707070 !important; 
+        }}
+
+        /* Buttons */
         div.stButton > button {{ background-color: #616161 !important; color: white !important; border: 1px solid #888888 !important; border-radius: 8px; width: 100%; }}
         .stButton > button[key^="del_"] {{ background-color: #8B0000 !important; border-color: #FF4B4B !important; }}
         div.stButton > button:hover {{ background-color: #808080 !important; border-color: white !important; }}
+        
+        /* Containers */
         [data-testid="stVerticalBlock"] > div:has(div.stForm), .stDataFrame, .stTable, .element-container:has(.stMetric) {{ background-color: rgba(70, 70, 70, 0.6) !important; padding: 15px; border-radius: 12px; border: 1px solid #555; }}
         .styled-header {{ background-color: rgba(50, 50, 50, 0.8); padding: 40px 20px; border-radius: 20px; text-align: center; margin-bottom: 40px; }}
         header {{background: rgba(0,0,0,0) !important;}}
@@ -120,10 +129,18 @@ else:
     st.markdown('<div class="styled-header"><h1>🌸 SK97 Stock Management</h1></div>', unsafe_allow_html=True)
     menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
-    # --- VIEW STOCK ---
+    # --- VIEW STOCK (WITH SEARCH) ---
     if menu == "View Stock":
+        # Search Bar UI
+        search_query = st.text_input("🔍 Search items by name...", "").strip().lower()
+        
         df = pd.read_sql_query("SELECT product_name, quantity, image_path FROM stock", conn)
-        st.subheader(f"📦 Current Inventory ({len(df)} Types)")
+        
+        # Filter logic
+        if search_query:
+            df = df[df['product_name'].str.lower().str.contains(search_query)]
+        
+        st.subheader(f"📦 Inventory ({len(df)} Items Found)")
         
         if not df.empty:
             for i, row in enumerate(df.iloc, 1):
@@ -154,7 +171,7 @@ else:
                         st.rerun()
                 st.divider()
         else: 
-            st.info("No stock found.")
+            st.info("No matching items found.")
 
     # --- STOCK IN ---
     elif menu == "Stock In":
@@ -183,23 +200,20 @@ else:
             with st.form("create_new"):
                 new_name = st.text_input("New Product Name")
                 initial_qty = st.number_input("Initial Quantity", min_value=0, value=0)
-                new_img = st.file_uploader("Upload Any Photo (Any filename)", type=['png', 'jpg', 'jpeg'])
+                new_img = st.file_uploader("Upload Any Photo", type=['png', 'jpg', 'jpeg'])
                 
                 if st.form_submit_button("Register Product"):
                     if new_name:
-                        # Logic: Use a timestamp so the filename is ALWAYS unique
                         final_img_path = ""
                         if new_img:
+                            # Unique filename based on time to avoid conflicts
                             timestamp = int(time.time())
                             file_ext = new_img.name.split('.')[-1]
                             save_name = f"img_{timestamp}.{file_ext}"
                             final_img_path = os.path.join(IMG_DIR, save_name)
                             
-                            try:
-                                with open(final_img_path, "wb") as f:
-                                    f.write(new_img.getbuffer())
-                            except Exception as e:
-                                st.error(f"Save failed: {e}")
+                            with open(final_img_path, "wb") as f:
+                                f.write(new_img.getbuffer())
                         
                         try:
                             c.execute("INSERT INTO stock (product_name, quantity, image_path) VALUES (?, ?, ?)", 
