@@ -83,7 +83,7 @@ def set_ui_design(image_file):
         }}
 
         /* Gray Buttons */
-        div.stButton > button, div.stFormSubmitButton > button, div.stDownloadButton > button {{ 
+        div.stButton > button {{ 
             background-color: #616161 !important; 
             color: white !important; 
             border: 1px solid #888888 !important; 
@@ -91,7 +91,13 @@ def set_ui_design(image_file):
             width: 100%; 
         }}
         
-        div.stButton > button:hover, div.stFormSubmitButton > button:hover {{ 
+        /* Specific styling for the inline Delete button */
+        .stButton > button[kind="secondary"] {{
+            background-color: #8B0000 !important;
+            border-color: #FF4B4B !important;
+        }}
+
+        div.stButton > button:hover {{ 
             background-color: #808080 !important; 
             border-color: white !important; 
         }}
@@ -161,15 +167,32 @@ else:
         df = pd.read_sql_query("SELECT product_name, quantity FROM stock", conn)
         if not df.empty:
             for _, row in df.iterrows():
-                col1, col2 = st.columns([1,4])
+                col1, col2, col3 = st.columns([1, 3, 1])
                 img_p = f"images/{row['product_name']}.png"
+                
                 with col1:
-                    if os.path.exists(img_p): st.image(img_p)
+                    if os.path.exists(img_p): 
+                        st.image(img_p)
+                    else:
+                        st.write("No Image")
+                
                 with col2:
                     st.write(f"### {row['product_name']}")
-                    st.write(f"Stock: {row['quantity']} units")
+                    st.write(f"Stock: **{row['quantity']}** units")
+                
+                with col3:
+                    st.write("") # Padding
+                    # Unique key for each button to avoid Streamlit Duplicate ID errors
+                    if st.button("Delete", key=f"del_{row['product_name']}"):
+                        img_path = f"images/{row['product_name']}.png"
+                        if os.path.exists(img_path): os.remove(img_path)
+                        c.execute("DELETE FROM stock WHERE product_name = ?", (row['product_name'],))
+                        conn.commit()
+                        st.success(f"Deleted {row['product_name']}")
+                        st.rerun()
                 st.divider()
-        else: st.info("No stock found.")
+        else: 
+            st.info("No stock found.")
 
     # --- STOCK IN ---
     elif menu == "Stock In":
@@ -185,6 +208,7 @@ else:
                 c.execute("INSERT INTO transactions (product_name, type, qty, date) VALUES (?, 'IN', ?, ?)", (name, qty, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
                 conn.commit()
                 st.success(f"Added {qty} to {name}")
+                st.rerun()
 
     # --- STOCK OUT ---
     elif menu == "Stock Out":
@@ -207,7 +231,7 @@ else:
                     else: st.error("Insufficient stock!")
         else: st.warning("Inventory is empty.")
 
-    # --- DELETE STOCK ---
+    # --- DELETE STOCK (Separate Page) ---
     elif menu == "Delete Stock":
         st.subheader("🗑 Delete Product")
         st.warning("This will permanently remove the product and its image.")
