@@ -91,7 +91,7 @@ def set_ui_design(image_file):
             width: 100%; 
         }}
         
-        /* Specific styling for the inline Delete button to make it look distinct */
+        /* Red Delete Buttons */
         .stButton > button[key^="del_"] {{
             background-color: #8B0000 !important;
             border-color: #FF4B4B !important;
@@ -160,31 +160,35 @@ else:
 
     st.markdown('<div class="styled-header"><h1>🌸 SK97 Stock Management</h1></div>', unsafe_allow_html=True)
     
-    # "Delete Stock" removed from the list below
+    # "Delete Stock" is removed from sidebar menu
     menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
     # --- VIEW STOCK ---
     if menu == "View Stock":
         st.subheader("📦 Current Inventory")
         df = pd.read_sql_query("SELECT product_name, quantity FROM stock", conn)
+        
         if not df.empty:
-            for _, row in df.iterrows():
-                col1, col2, col3 = st.columns([1, 3, 1])
+            # We use enumerate starting at 1 to display order numbers
+            for i, row in enumerate(df.iloc, 1):
+                col0, col1, col2, col3 = st.columns([0.5, 1.5, 4, 1])
                 img_p = f"images/{row['product_name']}.png"
+                
+                with col0:
+                    st.write(f"### {i}.") # Item Numbering
                 
                 with col1:
                     if os.path.exists(img_p): 
                         st.image(img_p)
                     else:
-                        st.write("No Image")
+                        st.write("🖼️")
                 
                 with col2:
                     st.write(f"### {row['product_name']}")
                     st.write(f"Stock: **{row['quantity']}** units")
                 
                 with col3:
-                    st.write("") # Vertical alignment padding
-                    # Delete logic moved inside the view for convenience
+                    st.write("") # Alignment
                     if st.button("Delete", key=f"del_{row['product_name']}"):
                         img_path = f"images/{row['product_name']}.png"
                         if os.path.exists(img_path): os.remove(img_path)
