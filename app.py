@@ -82,7 +82,7 @@ def set_ui_design(image_file):
             border: 1px solid #707070 !important; 
         }}
 
-        /* Gray Buttons */
+        /* Button Styling */
         div.stButton > button {{ 
             background-color: #616161 !important; 
             color: white !important; 
@@ -91,8 +91,8 @@ def set_ui_design(image_file):
             width: 100%; 
         }}
         
-        /* Specific styling for the inline Delete button */
-        .stButton > button[kind="secondary"] {{
+        /* Specific styling for the inline Delete button to make it look distinct */
+        .stButton > button[key^="del_"] {{
             background-color: #8B0000 !important;
             border-color: #FF4B4B !important;
         }}
@@ -159,7 +159,9 @@ else:
         st.rerun()
 
     st.markdown('<div class="styled-header"><h1>🌸 SK97 Stock Management</h1></div>', unsafe_allow_html=True)
-    menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Delete Stock", "Daily Reports"])
+    
+    # "Delete Stock" removed from the list below
+    menu = st.sidebar.selectbox("Select Menu", ["View Stock", "Stock In", "Stock Out", "Daily Reports"])
 
     # --- VIEW STOCK ---
     if menu == "View Stock":
@@ -181,8 +183,8 @@ else:
                     st.write(f"Stock: **{row['quantity']}** units")
                 
                 with col3:
-                    st.write("") # Padding
-                    # Unique key for each button to avoid Streamlit Duplicate ID errors
+                    st.write("") # Vertical alignment padding
+                    # Delete logic moved inside the view for convenience
                     if st.button("Delete", key=f"del_{row['product_name']}"):
                         img_path = f"images/{row['product_name']}.png"
                         if os.path.exists(img_path): os.remove(img_path)
@@ -230,27 +232,6 @@ else:
                         st.rerun()
                     else: st.error("Insufficient stock!")
         else: st.warning("Inventory is empty.")
-
-    # --- DELETE STOCK (Separate Page) ---
-    elif menu == "Delete Stock":
-        st.subheader("🗑 Delete Product")
-        st.warning("This will permanently remove the product and its image.")
-        c.execute("SELECT product_name FROM stock")
-        prods = [r[0] for r in c.fetchall()]
-        if prods:
-            with st.form("delete_form"):
-                to_delete = st.selectbox("Select product to remove", prods)
-                confirm = st.checkbox("Confirm deletion")
-                if st.form_submit_button("Delete Permanently"):
-                    if confirm:
-                        img_path = f"images/{to_delete}.png"
-                        if os.path.exists(img_path): os.remove(img_path)
-                        c.execute("DELETE FROM stock WHERE product_name = ?", (to_delete,))
-                        conn.commit()
-                        st.success(f"Deleted {to_delete}")
-                        st.rerun()
-                    else: st.error("Check the confirmation box.")
-        else: st.info("No products to delete.")
 
     # --- DAILY REPORTS ---
     elif menu == "Daily Reports":
